@@ -1,6 +1,10 @@
 ---
 name: gaps
 description: Find sparse-coverage scopes/topics — surface candidates, then offer to fill them inline.
+allowed-tools:
+  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(cypher-shell:*)"
+  - "Read"
 ---
 
 # /gaps [scope]

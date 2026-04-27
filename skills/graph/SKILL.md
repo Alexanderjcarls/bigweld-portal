@@ -1,6 +1,11 @@
 ---
 name: graph
 description: Bigweld substrate manual — schema, cypher patterns (read AND write), multi-step graph workflows. Invoke before any complex graph operation.
+allowed-tools:
+  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(python /datapool/bigweld/scripts/embed_query.py:*)"
+  - "Bash(cypher-shell:*)"
+  - "Read"
 ---
 
 # /graph — substrate manual

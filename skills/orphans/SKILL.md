@@ -1,6 +1,10 @@
 ---
 name: orphans
 description: Articles with no inbound RELATES_TO edges — surface, then offer to link/merge/move inline.
+allowed-tools:
+  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(cypher-shell:*)"
+  - "Read"
 ---
 
 # /orphans

@@ -1,6 +1,10 @@
 ---
 name: dupes
 description: Semantic near-duplicate articles via embedding cosine similarity > 0.92 — surface candidates, then offer to merge/keep/delete inline.
+allowed-tools:
+  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(cypher-shell:*)"
+  - "Read"
 ---
 
 # /dupes

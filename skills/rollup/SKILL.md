@@ -1,6 +1,10 @@
 ---
 name: rollup
 description: Coverage summary for a scope — article count, edge density, recent activity, tag distribution, sample titles.
+allowed-tools:
+  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(cypher-shell:*)"
+  - "Read"
 ---
 
 # /rollup <scope>

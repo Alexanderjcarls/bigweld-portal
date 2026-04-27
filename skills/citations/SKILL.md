@@ -1,6 +1,11 @@
 ---
 name: citations
 description: Most-traversed articles around a topic — graph-walked citation count, surfaces canonical references.
+allowed-tools:
+  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(python /datapool/bigweld/scripts/embed_query.py:*)"
+  - "Bash(cypher-shell:*)"
+  - "Read"
 ---
 
 # /citations <topic>

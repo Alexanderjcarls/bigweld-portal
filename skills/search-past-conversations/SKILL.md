@@ -1,6 +1,10 @@
 ---
 name: search-past-conversations
 description: Grep prior conversation summaries by query string; ranked by recency + match score. Use when Alex assumes prior context that isn't in the current conversation.
+allowed-tools:
+  - "Bash(grep:*)"
+  - "Bash(bash /datapool/bigweld-portal/.claude/skills/search-past-conversations/grep.sh:*)"
+  - "Read"
 ---
 
 # /search-past-conversations <query>
