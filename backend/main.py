@@ -68,10 +68,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+_DIST = (Path(__file__).resolve().parent.parent / "frontend" / "dist").resolve()
 if _DIST.exists():
-    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str) -> FileResponse:
+        target = (_DIST / full_path).resolve()
+        if _DIST in target.parents and target.is_file():
+            return FileResponse(target)
         return FileResponse(_DIST / "index.html")
