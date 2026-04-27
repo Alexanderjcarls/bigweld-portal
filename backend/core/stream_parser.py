@@ -12,7 +12,13 @@ Anthropic stream-json events observed from Claude Code 2.1.119:
 - result: final session envelope with duration, final assistant text, cost, and usage.
 """
 
+import json
+import logging
+from collections.abc import Iterator
 from typing import Any, Literal, TypedDict
+
+
+logger = logging.getLogger(__name__)
 
 
 class StreamJsonEvent(TypedDict, total=False):
@@ -60,6 +66,7 @@ class StreamJsonEvent(TypedDict, total=False):
     # stream_event / assistant / user payloads
     event: dict[str, Any]
     message: dict[str, Any]
+    content: str
     content_block: dict[str, Any]
     delta: dict[str, Any]
     ttft_ms: int
@@ -86,3 +93,99 @@ class StreamJsonEvent(TypedDict, total=False):
 def is_terminal(event: StreamJsonEvent) -> bool:
     """Return True if this event signals the end of a turn."""
     return event.get("type") == "result"
+
+
+class LineBufferedParser:
+    """Parse NDJSON from `claude -p` while preserving partial lines.
+
+    Chunks from a subprocess pipe or HTTP stream can split a JSON object across
+    arbitrary boundaries, so incomplete lines stay buffered until a newline or EOF.
+    """
+
+    def __init__(self) -> None:
+        self._buffer = bytearray()
+
+    def feed(self, chunk: bytes) -> Iterator[StreamJsonEvent]:
+        """Append a chunk and yield all complete events currently available."""
+        if not chunk:
+            return
+
+        self._buffer.extend(chunk)
+        while True:
+            newline_idx = self._buffer.find(b"\n")
+            if newline_idx == -1:
+                return
+
+            line = bytes(self._buffer[:newline_idx])
+            del self._buffer[: newline_idx + 1]
+
+            event = self._parse_line(line)
+            if event is not None:
+                yield event
+
+    def eof(self) -> Iterator[StreamJsonEvent]:
+        """Flush any buffered partial line after the stream closes."""
+        if not self._buffer:
+            return
+
+        line = bytes(self._buffer)
+        self._buffer.clear()
+
+        event = self._parse_eof_line(line)
+        if event is not None:
+            yield event
+
+    def _parse_eof_line(self, line: bytes) -> StreamJsonEvent | None:
+        """Parse the final unterminated line, with EOF-only object-close repair."""
+        if not line.strip():
+            return None
+
+        try:
+            return json.loads(line.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            logger.warning(
+                "stream_parser: malformed line dropped (len=%d): %s",
+                len(line),
+                exc,
+            )
+            return None
+        except json.JSONDecodeError as exc:
+            repaired = self._repair_missing_object_close(line)
+            if repaired is not None:
+                try:
+                    return json.loads(repaired.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+
+            logger.warning(
+                "stream_parser: malformed line dropped (len=%d): %s",
+                len(line),
+                exc,
+            )
+            return None
+
+    def _parse_line(self, line: bytes) -> StreamJsonEvent | None:
+        """Parse one JSON line, logging and dropping malformed input."""
+        if not line.strip():
+            return None
+
+        try:
+            return json.loads(line.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "stream_parser: malformed line dropped (len=%d): %s",
+                len(line),
+                exc,
+            )
+            return None
+
+    def _repair_missing_object_close(self, line: bytes) -> bytes | None:
+        """Repair one missing trailing `}` for EOF partial-line compatibility."""
+        stripped = line.rstrip()
+        if (
+            stripped.startswith(b"{")
+            and not stripped.endswith(b"}")
+            and stripped.count(b"{") == stripped.count(b"}") + 1
+        ):
+            return stripped + b"}"
+        return None
