@@ -12,6 +12,9 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from backend.api.budget import router as budget_router
 from backend.api.conversations import _store, router as conversations_router
@@ -63,3 +66,12 @@ app.include_router(metrics_router)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _DIST.exists():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str) -> FileResponse:
+        return FileResponse(_DIST / "index.html")

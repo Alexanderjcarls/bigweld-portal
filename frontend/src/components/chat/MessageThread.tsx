@@ -1,9 +1,10 @@
 import { useChatStore } from "@/stores/chatStore";
 import { Message } from "./Message";
 import { useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 export function MessageThread() {
-  const messageIds = useChatStore(s => s.messages.map(m => m.id));
+  const messageIds = useChatStore(useShallow(s => s.messages.map(m => m.id)));
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
