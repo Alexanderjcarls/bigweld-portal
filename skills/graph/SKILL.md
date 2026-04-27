@@ -12,7 +12,7 @@ allowed-tools:
 
 ## Schema (also in world-model.md)
 
-- **Article** `{id, title, summary, cliff_notes, body, embedding[2560], scope, tags[], created_ts, updated_ts}`
+- **Article** `{id, title, summary, cliff_notes, body, embedding[2560], scope, tags[], created, updated}`
 - **Scope** `{name}` — top-level groupings (storage-support, hpe-support, hybrid-cloud, etc.)
 - **Tag** `{name}` — fine-grained labels
 - **Source** `{name, url}` — where article material came from
@@ -22,7 +22,7 @@ allowed-tools:
 
 ## Edges
 
-- `(Article)-[:IN_SCOPE]->(Scope)`
+- `(Article)-[:APPLIES_TO]->(Scope)`
 - `(Article)-[:TAGGED]->(Tag)`
 - `(Article)-[:FROM]->(Source)`
 - `(Article)-[:REFERENCES]->(SfdcObject|SfdcField|SfdcRecordType)`
@@ -35,7 +35,7 @@ allowed-tools:
 ```cypher
 CALL db.index.vector.queryNodes('article_embedding', 10, $query_vector)
 YIELD node, score
-RETURN node.id, node.title, node.summary, score
+RETURN node.slug, node.title, node.summary, score
 ORDER BY score DESC
 ```
 
@@ -47,7 +47,7 @@ python /datapool/bigweld/scripts/embed_query.py "<query text>"
 ### Walk neighborhood (depth N, bidirectional RELATES_TO)
 
 ```cypher
-MATCH path = (start:Article {id: $article_id})-[:RELATES_TO*1..2]-(neighbor:Article)
+MATCH path = (start:Article {slug: $article_slug})-[:RELATES_TO*1..2]-(neighbor:Article)
 RETURN start, relationships(path), neighbor
 LIMIT 30
 ```
@@ -55,9 +55,9 @@ LIMIT 30
 ### Scope coverage
 
 ```cypher
-MATCH (s:Scope {name: $scope_name})<-[:IN_SCOPE]-(a:Article)
+MATCH (s:Scope {name: $scope_name})<-[:APPLIES_TO]-(a:Article)
 WITH s, count(a) AS article_count, collect(a.title)[0..10] AS sample_titles
-OPTIONAL MATCH (a2:Article)-[:IN_SCOPE]->(s)-[:RELATES_TO]-(other:Article)
+OPTIONAL MATCH (a2:Article)-[:APPLIES_TO]->(s)-[:RELATES_TO]-(other:Article)
 RETURN article_count, sample_titles, count(DISTINCT other) AS edge_density
 ```
 
@@ -65,7 +65,7 @@ RETURN article_count, sample_titles, count(DISTINCT other) AS edge_density
 
 ```cypher
 MATCH (o:SfdcObject {name: $obj_name})<-[:REFERENCES]-(a:Article)
-RETURN a.id, a.title, a.summary
+RETURN a.slug, a.title, a.summary
 ```
 
 ### Tag intersection
@@ -73,7 +73,7 @@ RETURN a.id, a.title, a.summary
 ```cypher
 MATCH (a:Article)-[:TAGGED]->(t1:Tag {name: $tag_a})
 MATCH (a)-[:TAGGED]->(t2:Tag {name: $tag_b})
-RETURN a.id, a.title, a.summary
+RETURN a.slug, a.title, a.summary
 ```
 
 ### Orphan articles
@@ -81,7 +81,7 @@ RETURN a.id, a.title, a.summary
 ```cypher
 MATCH (a:Article)
 WHERE NOT EXISTS { (other:Article)-[:RELATES_TO]->(a) }
-RETURN a.id, a.title, a.summary, a.scope
+RETURN a.slug, a.title, a.summary, a.scope
 LIMIT 30
 ```
 
@@ -89,9 +89,9 @@ LIMIT 30
 
 ```cypher
 MATCH (a:Article)
-WHERE a.updated_ts > $since
-RETURN a.id, a.title, a.updated_ts
-ORDER BY a.updated_ts DESC
+WHERE a.updated > $since
+RETURN a.slug, a.title, a.updated
+ORDER BY a.updated DESC
 LIMIT 30
 ```
 
@@ -110,8 +110,8 @@ CREATE (a:Article {
   body: $body,
   scope: $scope,
   tags: $tags,
-  created_ts: datetime(),
-  updated_ts: datetime()
+  created: datetime(),
+  updated: datetime()
 })
 RETURN a
 ```
@@ -125,17 +125,17 @@ Then `SET a.embedding = $embedding`.
 ### Update article body / summary / cliff_notes
 
 ```cypher
-MATCH (a:Article {id: $id})
+MATCH (a:Article {slug: $slug})
 SET a.body = $new_body,
     a.cliff_notes = $new_cliff_notes,
-    a.updated_ts = datetime()
+    a.updated = datetime()
 RETURN a
 ```
 
 ### Link two articles (reciprocal RELATES_TO)
 
 ```cypher
-MATCH (a:Article {id: $id_a}), (b:Article {id: $id_b})
+MATCH (a:Article {slug: $slug_a}), (b:Article {slug: $slug_b})
 MERGE (a)-[:RELATES_TO]->(b)
 MERGE (b)-[:RELATES_TO]->(a)
 RETURN a, b
@@ -144,7 +144,7 @@ RETURN a, b
 ### Tag an article
 
 ```cypher
-MATCH (a:Article {id: $id})
+MATCH (a:Article {slug: $slug})
 MERGE (t:Tag {name: $tag_name})
 MERGE (a)-[:TAGGED]->(t)
 RETURN a, t
@@ -153,12 +153,12 @@ RETURN a, t
 ### Move an article to a different scope
 
 ```cypher
-MATCH (a:Article {id: $id})-[r:IN_SCOPE]->(:Scope)
+MATCH (a:Article {slug: $slug})-[r:APPLIES_TO]->(:Scope)
 DELETE r
 WITH a
 MATCH (s:Scope {name: $new_scope})
-MERGE (a)-[:IN_SCOPE]->(s)
-SET a.scope = $new_scope, a.updated_ts = datetime()
+MERGE (a)-[:APPLIES_TO]->(s)
+SET a.scope = $new_scope, a.updated = datetime()
 RETURN a
 ```
 
@@ -173,18 +173,18 @@ This is destructive (one article gets deleted). Always plan it explicitly:
 
 ```cypher
 // Step 1: redirect RELATES_TO edges from loser to canonical
-MATCH (other:Article)-[r:RELATES_TO]->(loser:Article {id: $id_loser})
+MATCH (other:Article)-[r:RELATES_TO]->(loser:Article {slug: $slug_loser})
 WHERE other.id <> $id_canonical
-MERGE (other)-[:RELATES_TO]->(canonical:Article {id: $id_canonical})
+MERGE (other)-[:RELATES_TO]->(canonical:Article {slug: $slug_canonical})
 DELETE r
 WITH 1 AS x
 // Step 2: fold tags
-MATCH (loser:Article {id: $id_loser})-[:TAGGED]->(t:Tag)
-MATCH (canonical:Article {id: $id_canonical})
+MATCH (loser:Article {slug: $slug_loser})-[:TAGGED]->(t:Tag)
+MATCH (canonical:Article {slug: $slug_canonical})
 MERGE (canonical)-[:TAGGED]->(t)
 WITH 1 AS x
 // Step 3: detach-delete the loser
-MATCH (loser:Article {id: $id_loser})
+MATCH (loser:Article {slug: $slug_loser})
 DETACH DELETE loser
 ```
 

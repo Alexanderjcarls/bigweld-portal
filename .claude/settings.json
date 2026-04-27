@@ -59,6 +59,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/session-start.sh"
+          }
+        ]
+      }
     ]
   }
 }

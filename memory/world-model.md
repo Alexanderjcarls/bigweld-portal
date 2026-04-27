@@ -2,26 +2,91 @@
 
 This file is always loaded into context. Alex curates it over time; Bigweld proposes additions when missing context shows up in conversation.
 
-## Bigweld substrate (always-on schema knowledge)
+## Bigweld substrate (always-on schema knowledge — verified live 2026-04-27)
 
 - **Backend:** Neo4j 5.26.25 CE on `bolt://127.0.0.1:7687`. Auth disabled (localhost-only).
-- **Your access at runtime: read + write content** (articles, edges, tags, scopes, embeddings). You are the graph maintainer; do NOT edit the substrate **codebase** at `/datapool/bigweld/` (that's Oracle's lane — `neo4j-client.py`, schema migrations, helper scripts, deploy configs).
-- **Query helpers:**
-  - `python /datapool/bigweld/neo4j-client.py --query "<cypher>" [--params '<json>']` — main interface for both reads and writes
-  - `cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"` — for one-off exploration
-  - `python /datapool/bigweld/scripts/audit_write.py --cypher "..." --params '...' --conv-id "$BIGWELD_CONVERSATION_ID"` — wraps write + appends to `/datapool/bigweld/audit.log`. If this helper doesn't exist yet, write directly via `neo4j-client.py` and note the missing audit in chat.
-- **Node types (6):** `Article`, `Scope`, `Tag`, `Source`, `SfdcObject`, `SfdcField`, `SfdcRecordType`.
-- **Article structure (3-tier):** Each `Article` node has `summary` (~100 tok), `cliff_notes` (~1000 tok), `body` (full). When citing, default to `summary`; expand to `cliff_notes` or `body` only if depth is needed.
-- **Embeddings:** `Article.embedding` is 2560-dim from Qwen3-Embedding-4B. Vector index name: `article_embedding`. To embed a query string for similarity search: `python /datapool/bigweld/scripts/embed_query.py "<text>"`.
-- **Approximate counts (as of 2026-04-24 extraction):** ~261 articles + 5 sidecar types (97 SfdcFields, 27 SfdcObjects, 1486 Tags, 6 Scopes), 3004 reciprocal RELATES_TO edges. These grow as you maintain the graph.
+- **Your access at runtime: read + write content** (articles, edges, tags, scopes, embeddings). You are the graph maintainer; do NOT edit the substrate **codebase** at `/datapool/bigweld/` (that's Oracle's lane).
+- **Query helpers (verified working):**
+  - `python /datapool/bigweld/scripts/neo4j-client.py --query "<cypher>" [--params '<json>']` — read-only Cypher CLI; refuses write keywords with exit 2 + helpful message.
+  - `cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"` — one-off exploration; allows writes (no audit).
+  - `python /datapool/bigweld/scripts/audit_write.py --cypher "..." --params '...' --conv-id "$BIGWELD_CONVERSATION_ID" --reason "..."` — write path; runs cypher AND appends audit entry to `/datapool/bigweld/audit.log`. Use this for every write.
+  - `python /datapool/bigweld/scripts/embed_query.py "<text>"` — Qwen3-Embedding-4B (2560-dim) for vector similarity.
 
-## Write patterns to know
+### Schema (verified)
 
-- **Add article:** `CREATE (a:Article {id: ..., title: ..., summary: ..., cliff_notes: ..., body: ..., scope: ..., tags: [...], created_ts: datetime(), updated_ts: datetime()}) RETURN a`. Embedding gets backfilled by a periodic job (or you can call the embed helper inline and SET the property).
-- **Update article body:** `MATCH (a:Article {id: $id}) SET a.body = $new_body, a.updated_ts = datetime() RETURN a`.
-- **Link two articles:** `MATCH (a:Article {id: $id_a}), (b:Article {id: $id_b}) MERGE (a)-[:RELATES_TO]->(b) MERGE (b)-[:RELATES_TO]->(a)` (reciprocal).
-- **Tag an article:** `MATCH (a:Article {id: $id}) MERGE (t:Tag {name: $tag_name}) MERGE (a)-[:TAGGED]->(t)`.
-- **Merge two near-duplicate articles:** non-trivial — read both, decide on canonical, redirect inbound edges, mark/delete the loser. Show full plan before running.
+- **Node labels (7):** `Article`, `Scope`, `Tag`, `Source`, `SfdcObject`, `SfdcField`, `SfdcRecordType`.
+- **Relationship types (9):**
+  - `(Article)-[:APPLIES_TO]->(Scope)` — article belongs to a scope
+  - `(Article)-[:TAGGED]->(Tag)` — article carries a tag
+  - `(Article)-[:HAS_SOURCE]->(Source)` — article cites a source
+  - `(Article)-[:REFERENCES]->(SfdcObject|SfdcField|SfdcRecordType)` — article references SFDC schema
+  - `(Article)-[:RELATES_TO]->(Article)` — reciprocal cross-link (traverse undirected)
+  - `(SfdcObject)-[:HAS_FIELD]->(SfdcField)`
+  - `(SfdcObject)-[:HAS_RECORD_TYPE]->(SfdcRecordType)`
+  - `(?)-[:DEPENDS_ON]->(?)`, `(?)-[:OWNED_BY]->(?)` — present in graph; semantics evolve in conversation
+- **Scopes (6, real names):** `alletra-mp-block`, `hybrid-cloud`, `nimble-specific`, `pan-hpe`, `sfdc-internal`, `sfdc-nimble`.
+
+### Article structure (3-tier + metadata)
+
+Every `Article` node has:
+- **Identity:** `slug` (canonical id, the thing you `MATCH` on), `title`, `type`, `status`, `domain`, `is_hub`.
+- **Content (3 tiers):** `summary` (~100 tok), `cliff_notes` (~1000 tok), `body` (full). Default to `summary` when citing; expand only on demand.
+- **Embedding:** `embedding` is 2560-dim from Qwen3-Embedding-4B. Vector index name: `article_embedding`. Full-text index: `article_fulltext` over `(title, body, summary, cliff_notes)`.
+- **Timestamps:** `created`, `updated`, `ingested_date`, `source_date`, `last_indexed`. **Use `updated` (not `updated_ts` or `updated_at`) for recency queries.**
+- **Provenance metadata:** `confidence`, `summary_generated_at`, `summary_prompt_version`.
+
+### Live counts (verified 2026-04-27)
+
+264 articles · 1502 RELATES_TO pairs (3004 directed edges, reciprocal). Sidecars: SfdcObjects, SfdcFields, SfdcRecordTypes, Tags, Sources. These grow as you maintain the graph; the SessionStart hook refreshes a snapshot at most once per hour.
+
+## Write patterns
+
+When a conversation produces a graph-worthy update, propose the cypher in chat first, run after Alex's nod (or explicit "yes, run it" for destructive ops), and route through `audit_write.py` so every write is logged.
+
+- **Add an article:**
+  ```cypher
+  CREATE (a:Article {
+    slug: $slug, title: $title, summary: $summary, cliff_notes: $cliff_notes,
+    body: $body, type: $type, status: 'active', is_hub: false,
+    confidence: $confidence, created: datetime(), updated: datetime()
+  })
+  RETURN a
+  ```
+  Embedding gets backfilled by a periodic job (or compute via `embed_query.py` and `SET a.embedding = $vec` in the same write).
+
+- **Update article body:**
+  ```cypher
+  MATCH (a:Article {slug: $slug})
+  SET a.body = $new_body, a.updated = datetime()
+  RETURN a
+  ```
+
+- **Link two articles (reciprocal RELATES_TO):**
+  ```cypher
+  MATCH (a:Article {slug: $slug_a}), (b:Article {slug: $slug_b})
+  MERGE (a)-[:RELATES_TO]->(b)
+  MERGE (b)-[:RELATES_TO]->(a)
+  ```
+
+- **Tag an article:**
+  ```cypher
+  MATCH (a:Article {slug: $slug})
+  MERGE (t:Tag {name: $tag_name})
+  MERGE (a)-[:TAGGED]->(t)
+  ```
+
+- **Move a scope assignment:**
+  ```cypher
+  MATCH (a:Article {slug: $slug})-[r:APPLIES_TO]->(:Scope)
+  DELETE r
+  WITH a
+  MATCH (s:Scope {name: $new_scope_name})
+  MERGE (a)-[:APPLIES_TO]->(s)
+  SET a.updated = datetime()
+  RETURN a
+  ```
+
+- **Merge two near-duplicates (DESTRUCTIVE — needs explicit "yes, run it"):** see `/graph` skill, "Merge two near-duplicate articles" pattern. Multi-step: redirect inbound RELATES_TO, fold tags, then DETACH DELETE the loser.
 
 ## SFDC objects (initial — Alex expands as they come up in conversation)
 
@@ -50,14 +115,14 @@ This file is always loaded into context. Alex curates it over time; Bigweld prop
 - **"what we have entitled"** — what source-support actually shows is delivered/active.
 - **"the delta"** — the gap between the two above. Common Bigweld query.
 - **"systemic gap"** — current pain (the SFDC→ServiceNow migration is NDA; reframe as current-state gap).
-- **"pan-HPE"** — applies across business lines, not just one product family. Articles tagged Hybrid-Cloud are typically the pan-HPE source.
+- **"pan-HPE"** — applies across business lines, not just one product family. Articles in scope `pan-hpe` or with related tags are typically the cross-product source.
 
 ## Workflow contexts (initial)
 
 - **RFQ — Request for Quote.** HPE templates, no em-dashes, structured Q&A. Match the template font; outbound deliverable.
 - **Customer escalation.** Fast-cycle, deliverable-focused, blunt language.
 - **Support batch.** Bulk processing of similar cases or articles. Canary first, then flood.
-- **KB curation.** Augment-not-replace; Hybrid-Cloud articles get pan-HPE additions, never overwritten. As content surfaces in conversations, persist it.
+- **KB curation.** Augment-not-replace; pan-HPE additions never overwrite scope-specific content. As content surfaces in conversations, persist it.
 
 ## Boundary calls
 
