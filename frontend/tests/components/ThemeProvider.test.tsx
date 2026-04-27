@@ -7,7 +7,7 @@ function Probe() {
   return (
     <div>
       <span data-testid="theme">{theme}</span>
-      <button onClick={() => setTheme("dark")}>dark</button>
+      <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>toggle theme</button>
     </div>
   );
 }
@@ -18,27 +18,27 @@ describe("ThemeProvider", () => {
     document.documentElement.classList.remove("dark");
   });
 
-  it("defaults to light theme", () => {
+  it("defaults to dark theme", () => {
     render(
       <ThemeProvider>
         <Probe />
       </ThemeProvider>
     );
-    expect(screen.getByTestId("theme")).toHaveTextContent("light");
-    expect(document.documentElement).not.toHaveClass("dark");
+    expect(screen.getByTestId("theme")).toHaveTextContent("dark");
+    expect(document.documentElement).toHaveClass("dark");
   });
 
-  it("toggles to dark and adds class", () => {
+  it("toggles to light and removes class", () => {
     render(
       <ThemeProvider>
         <Probe />
       </ThemeProvider>
     );
     act(() => {
-      screen.getByText("dark").click();
+      screen.getByText("toggle theme").click();
     });
-    expect(screen.getByTestId("theme")).toHaveTextContent("dark");
-    expect(document.documentElement).toHaveClass("dark");
-    expect(localStorage.getItem("bigweld-theme")).toBe("dark");
+    expect(screen.getByTestId("theme")).toHaveTextContent("light");
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(localStorage.getItem("bigweld-theme")).toBe("light");
   });
 });

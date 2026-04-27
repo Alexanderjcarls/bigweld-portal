@@ -13,8 +13,8 @@ const STORAGE_KEY = "bigweld-theme";
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "light";
-    return (localStorage.getItem(STORAGE_KEY) as Theme) || "light";
+    if (typeof window === "undefined") return "dark";
+    return (localStorage.getItem(STORAGE_KEY) as Theme) || "dark";
   });
 
   useEffect(() => {

@@ -29,7 +29,7 @@ export function DownloadZone() {
 
   if (!current?.rendered_svg) {
     return (
-      <div className="h-full flex items-center justify-center bg-muted/10 border-t font-sans">
+      <div className="flex h-full items-center justify-center border-t border-border bg-muted/30 font-sans">
         <p className="text-xs text-muted-foreground">Download appears when artifact is ready.</p>
       </div>
     );
@@ -54,7 +54,7 @@ export function DownloadZone() {
   };
 
   return (
-    <div className="h-full flex items-center justify-around bg-muted/10 border-t px-6 font-sans">
+    <div className="flex h-full items-center justify-around border-t border-border bg-muted/30 px-6 font-sans">
       <span className="text-sm">Looks good?</span>
       <div className="flex gap-2">
         <Button size="sm" onClick={downloadSvg}>⬇ .svg</Button>

@@ -8,9 +8,9 @@ import { TextareaFallback } from "./TextareaFallback";
 
 export function ChatSurface() {
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col border-r border-border bg-card">
       <MessageThread />
-      <div className="border-t">
+      <div className="border-t border-border bg-card/50">
         <ResumeBanner />
         <ChatInputBoundary fallback={<TextareaFallback />}>
           <ChatInput />

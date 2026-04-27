@@ -3,5 +3,9 @@ import { RenderPanel } from "./RenderPanel";
 
 export function WorkingSpace() {
   useFenceDetector();
-  return <RenderPanel />;
+  return (
+    <div className="h-full bg-background">
+      <RenderPanel />
+    </div>
+  );
 }
