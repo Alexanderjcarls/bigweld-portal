@@ -7,8 +7,10 @@ This file scaffolds the app surface. Subsequent phases wire in:
 """
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 
 from backend.api.budget import router as budget_router
@@ -17,6 +19,18 @@ from backend.api.output import router as output_router
 from backend.api.render import router as render_router
 from backend.api.summarize import router as summarize_router
 from backend.core.summarizer import sweep_idle_conversations
+from backend.metrics import router as metrics_router
+
+logging.basicConfig(format="%(message)s", stream=sys.stdout, level=logging.INFO)
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +57,7 @@ app.include_router(conversations_router)
 app.include_router(output_router)
 app.include_router(render_router)
 app.include_router(summarize_router)
+app.include_router(metrics_router)
 
 
 @app.get("/health")

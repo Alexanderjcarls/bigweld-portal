@@ -6,6 +6,7 @@ from typing import Any
 from backend.core.config import SUMMARIZE_IDLE_THRESHOLD_S
 from backend.core.conversation_store import ConversationStore
 from backend.core.llm_router import chat
+from backend.metrics import summarizer_total
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ async def summarize_conversation(store: ConversationStore, conv_id: str) -> str 
     transcript = _build_transcript(events)
     if not transcript:
         logger.info("conversation %s is empty; skipping summarize", conv_id)
+        summarizer_total.labels(status="ok").inc()
         return None
 
     try:
@@ -71,9 +73,16 @@ async def summarize_conversation(store: ConversationStore, conv_id: str) -> str 
         )
     except Exception as exc:
         logger.exception("summarizer LLM call failed: %s", exc)
+        summarizer_total.labels(status="error").inc()
         return None
 
-    store.write_summary(conv_id, summary_md)
+    try:
+        store.write_summary(conv_id, summary_md)
+    except Exception:
+        summarizer_total.labels(status="error").inc()
+        raise
+
+    summarizer_total.labels(status="ok").inc()
     return summary_md
 
 

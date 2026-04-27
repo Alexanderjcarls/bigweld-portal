@@ -17,12 +17,14 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from backend.core.stream_parser import LineBufferedParser, StreamJsonEvent, is_terminal
+from backend.metrics import resume_failure_total, subprocess_startup_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,8 @@ class ManagedProc:
     proc: asyncio.subprocess.Process
     env_seen: dict[str, str]
     stderr_collected: str = ""
+    startup_started_at: float = field(default_factory=time.perf_counter)
+    _startup_observed: bool = False
     _stderr_task: asyncio.Task[None] | None = None
     _killed: bool = False
     _parser: LineBufferedParser = field(default_factory=LineBufferedParser)
@@ -97,6 +101,7 @@ class SubprocessManager:
     ) -> ManagedProc:
         env = self._build_env(conversation_id, conversation_file)
         args = self._build_args(prompt, session_uuid, is_resume)
+        startup_started_at = time.perf_counter()
         proc = await asyncio.create_subprocess_exec(
             *self._claude_command,
             *args,
@@ -112,6 +117,7 @@ class SubprocessManager:
                 "BIGWELD_CONVERSATION_ID": env["BIGWELD_CONVERSATION_ID"],
                 "BIGWELD_CONVERSATION_FILE": env["BIGWELD_CONVERSATION_FILE"],
             },
+            startup_started_at=startup_started_at,
         )
         managed._stderr_task = asyncio.create_task(self._drain_stderr(managed))
         if stdin_data is not None:
@@ -202,12 +208,22 @@ class SubprocessManager:
 
             if not chunk:
                 events = list(managed._parser.eof())
+                if events:
+                    self._observe_startup(managed)
                 await managed.wait_closed()
                 return events, True
 
             events = list(managed._parser.feed(chunk))
             if events:
+                self._observe_startup(managed)
                 return events, False
+
+    @staticmethod
+    def _observe_startup(managed: ManagedProc) -> None:
+        if managed._startup_observed:
+            return
+        managed._startup_observed = True
+        subprocess_startup_seconds.observe(time.perf_counter() - managed.startup_started_at)
 
     async def _read_next_event(self, managed: ManagedProc) -> StreamJsonEvent | None:
         if managed._replay_events:
@@ -265,6 +281,7 @@ class SubprocessManager:
             stdin_data = conversation_file.read_bytes() if conversation_file.exists() else b""
             new_uuid = str(uuid.uuid4())
             full_prompt = self._assemble_fallback_prompt(transcript, prompt)
+            resume_failure_total.inc()
             fallback_managed = await self.spawn_turn(
                 prompt=full_prompt,
                 session_uuid=new_uuid,

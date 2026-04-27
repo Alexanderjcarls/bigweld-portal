@@ -18,6 +18,7 @@ from backend.core.config import SUMMARIZE_IDLE_THRESHOLD_S
 from backend.core.conversation_store import ConversationStore
 from backend.core.summarizer import summarize_conversation
 from backend.core.subprocess_mgr import SubprocessManager
+from backend.metrics import turn_duration_seconds, turn_total
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
     session_uuid = existing_uuid or str(uuid_lib.uuid4())
 
     async def stream() -> AsyncIterator[bytes]:
+        started_at = time.perf_counter()
         try:
             result = await _subprocess_mgr.spawn_turn_with_fallback(
                 prompt=body.message,
@@ -147,6 +149,8 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
                 yield (json.dumps(ev) + "\n").encode("utf-8")
             await result.proc.wait_closed()
         except Exception as exc:
+            turn_total.labels(status="error").inc()
+            turn_duration_seconds.observe(time.perf_counter() - started_at)
             logger.exception("turn stream failed")
             err = {
                 "type": "system",
@@ -155,5 +159,8 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
                 "is_error": True,
             }
             yield (json.dumps(err) + "\n").encode("utf-8")
+        else:
+            turn_total.labels(status="ok").inc()
+            turn_duration_seconds.observe(time.perf_counter() - started_at)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
