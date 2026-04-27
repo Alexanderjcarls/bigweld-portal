@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from backend.api.conversations import router as conversations_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,6 +19,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Bigweld DA Portal", lifespan=lifespan)
+app.include_router(conversations_router)
 
 
 @app.get("/health")
