@@ -11,7 +11,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from backend.api.budget import router as budget_router
 from backend.api.conversations import _store, router as conversations_router
+from backend.api.output import router as output_router
 from backend.api.render import router as render_router
 from backend.api.summarize import router as summarize_router
 from backend.core.summarizer import sweep_idle_conversations
@@ -36,7 +38,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Bigweld DA Portal", lifespan=lifespan)
+app.include_router(budget_router)
 app.include_router(conversations_router)
+app.include_router(output_router)
 app.include_router(render_router)
 app.include_router(summarize_router)
 
