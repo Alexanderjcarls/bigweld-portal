@@ -1,4 +1,8 @@
 """Conversation file I/O tests."""
+import fcntl
+import json
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,6 +46,44 @@ def test_session_uuid_extraction(store):
     # Simulate the backend updating meta after first turn
     store.set_session_uuid(conv_id, "abc-123")
     assert store.read_session_uuid(conv_id) == "abc-123"
+
+
+def test_set_session_uuid_does_not_clobber_concurrent_hook_append(store):
+    conv_id = store.create()
+    path = store.path_for(conv_id)
+    lock_path = path.with_name(path.name + ".lock")
+    lock_acquired = threading.Event()
+    hook_event = {
+        "type": "user",
+        "content": "H",
+        "ts": "2026-04-27T12:00:00Z",
+    }
+
+    def append_like_hook() -> None:
+        with lock_path.open("a") as lockf:
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+            try:
+                lock_acquired.set()
+                time.sleep(0.1)
+                with path.open("a") as f:
+                    f.write(json.dumps(hook_event) + "\n")
+            finally:
+                fcntl.flock(lockf, fcntl.LOCK_UN)
+
+    thread = threading.Thread(target=append_like_hook)
+    thread.start()
+    assert lock_acquired.wait(timeout=1.0)
+
+    store.set_session_uuid(conv_id, "session-123")
+
+    thread.join(timeout=1.0)
+    assert not thread.is_alive()
+    events = store.read_events(conv_id)
+    assert any(
+        ev.get("type") == "meta" and ev.get("session_uuid") == "session-123"
+        for ev in events
+    )
+    assert hook_event in events
 
 
 def test_read_events_skips_corrupt_lines(store):

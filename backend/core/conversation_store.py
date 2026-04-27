@@ -16,6 +16,7 @@ session_uuid so subsequent turns can --resume. (We rewrite the line in place
 via a temp+rename - only the meta line; subsequent hook-written lines are
 preserved.)
 """
+import fcntl
 import json
 import logging
 import tempfile
@@ -55,6 +56,10 @@ class ConversationStore:
             json_path.parent / f"{json_path.stem}.summary.md"
         )
 
+    def _lock_path(self, conv_id: str) -> Path:
+        path = self.path_for(conv_id)
+        return path.with_name(path.name + ".lock")
+
     def create(self) -> str:
         conv_id = str(uuid.uuid4())
         path = self._month_dir() / f"{conv_id}.json"
@@ -91,37 +96,49 @@ class ConversationStore:
 
     def set_session_uuid(self, conv_id: str, session_uuid: str) -> None:
         """Rewrite ONLY the meta line; preserve all subsequent hook-written lines."""
-        path = self.path_for(conv_id)
-        events = self.read_events(conv_id)
-        rewrote = False
-        for ev in events:
-            if ev.get("type") == "meta":
-                ev["session_uuid"] = session_uuid
-                rewrote = True
-                break
-        if not rewrote:
-            events.insert(0, {
-                "type": "meta",
-                "conv_id": conv_id,
-                "session_uuid": session_uuid,
-                "created_ts": datetime.now(timezone.utc).isoformat(),
-            })
-        # Atomic write via temp+rename
-        tmp = path.with_suffix(".json.tmp")
-        with tmp.open("w") as f:
-            for ev in events:
-                f.write(json.dumps(ev) + "\n")
-        tmp.replace(path)
+        lock_path = self._lock_path(conv_id)
+        with lock_path.open("a") as lockf:
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+            try:
+                path = self.path_for(conv_id)
+                events = self.read_events(conv_id)
+                rewrote = False
+                for ev in events:
+                    if ev.get("type") == "meta":
+                        ev["session_uuid"] = session_uuid
+                        rewrote = True
+                        break
+                if not rewrote:
+                    events.insert(0, {
+                        "type": "meta",
+                        "conv_id": conv_id,
+                        "session_uuid": session_uuid,
+                        "created_ts": datetime.now(timezone.utc).isoformat(),
+                    })
+                # Atomic write via temp+rename
+                tmp = path.with_suffix(".json.tmp")
+                with tmp.open("w") as f:
+                    for ev in events:
+                        f.write(json.dumps(ev) + "\n")
+                tmp.replace(path)
+            finally:
+                fcntl.flock(lockf, fcntl.LOCK_UN)
 
     def write_summary(self, conv_id: str, content: str) -> None:
-        target = self.summary_path_for(conv_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w", dir=target.parent, prefix=".tmp-", suffix=".md", delete=False
-        ) as f:
-            f.write(content)
-            tmp_path = Path(f.name)
-        tmp_path.replace(target)
+        lock_path = self._lock_path(conv_id)
+        with lock_path.open("a") as lockf:
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+            try:
+                target = self.summary_path_for(conv_id)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    "w", dir=target.parent, prefix=".tmp-", suffix=".md", delete=False
+                ) as f:
+                    f.write(content)
+                    tmp_path = Path(f.name)
+                tmp_path.replace(target)
+            finally:
+                fcntl.flock(lockf, fcntl.LOCK_UN)
 
     def list_all(self) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
