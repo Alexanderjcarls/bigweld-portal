@@ -1,0 +1,60 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/user-prompt-submit.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/post-tool-use.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/stop.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Glob|Grep|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/graph-awareness.sh"
+          }
+        ]
+      }
+    ],
+    "InstructionsLoaded": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/instructions-loaded.sh",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
