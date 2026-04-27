@@ -52,9 +52,7 @@ class ConversationStore:
 
     def summary_path_for(self, conv_id: str) -> Path:
         json_path = self.path_for(conv_id)
-        return json_path.with_suffix("").with_suffix(".summary.md") if False else (
-            json_path.parent / f"{json_path.stem}.summary.md"
-        )
+        return json_path.parent / f"{json_path.stem}.summary.md"
 
     def _lock_path(self, conv_id: str) -> Path:
         path = self.path_for(conv_id)
