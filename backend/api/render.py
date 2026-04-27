@@ -23,7 +23,7 @@ async def render_via_kroki(body: RenderBody) -> Response:
         raise HTTPException(status_code=400, detail=f"unsupported: {body.diagram_type}")
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{KROKI_URL}/{body.diagram_type}/svg",
                 content=body.source.encode("utf-8"),

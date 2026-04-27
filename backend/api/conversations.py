@@ -132,6 +132,14 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
                 conversation_id=conv_id,
                 conversation_file=path,
             )
+            if result.fallback_used:
+                logger.warning(
+                    "resume_fallback_used",
+                    extra={
+                        "conv_id": conv_id,
+                        "new_session_uuid": result.new_session_uuid,
+                    },
+                )
             if result.fallback_used or not is_resume:
                 store.set_session_uuid(conv_id, result.new_session_uuid)
 
