@@ -1,18 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { ResizableShell } from "@/components/layout/ResizableShell";
+import { ChatSurface } from "@/components/chat/ChatSurface";
 
 const queryClient = new QueryClient();
-
-function ChatPlaceholder() {
-  return (
-    <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-      <img src="/logos/hpe/full-clr-pos.svg" alt="HPE" className="h-8 mb-4 dark:hidden" />
-      <img src="/logos/hpe/full-clr-rev.svg" alt="HPE" className="h-8 mb-4 hidden dark:block" />
-      <p className="font-sans">Bigweld — chat surface (Phase 9)</p>
-    </div>
-  );
-}
 
 function WorkspacePlaceholder() {
   return (
@@ -35,7 +26,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <ResizableShell
-          chat={<ChatPlaceholder />}
+          chat={<ChatSurface />}
           workspace={<WorkspacePlaceholder />}
           download={<DownloadPlaceholder />}
         />
