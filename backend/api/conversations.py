@@ -1,7 +1,10 @@
 """Conversation create, list, replay, and turn endpoints."""
+import asyncio
+import inspect
 import json
 import logging
 import os
+import time
 import uuid as uuid_lib
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -11,13 +14,16 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.auth import require_cf_access_email
+from backend.core.config import SUMMARIZE_IDLE_THRESHOLD_S
 from backend.core.conversation_store import ConversationStore
+from backend.core.summarizer import summarize_conversation
 from backend.core.subprocess_mgr import SubprocessManager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_cf_access_email)])
 _subprocess_mgr = SubprocessManager()
+MAX_LAZY_SUMMARIZE_TASKS = 5
 
 
 def _portal_root() -> Path:
@@ -45,9 +51,52 @@ class TurnRequest(BaseModel):
     attachments: list[dict] | None = None
 
 
+async def _run_lazy_summarize(store: ConversationStore, conv_id: str) -> None:
+    try:
+        result = summarize_conversation(store, conv_id)
+        if inspect.isawaitable(result):
+            await result
+    except Exception:
+        logger.warning(
+            "lazy_summarize_failed",
+            extra={"conv_id": conv_id},
+            exc_info=True,
+        )
+
+
+def _schedule_lazy_summaries(store: ConversationStore) -> None:
+    scheduled = 0
+    now = time.time()
+    for item in store.list_all():
+        if scheduled >= MAX_LAZY_SUMMARIZE_TASKS:
+            break
+        conv_id = item["id"]
+        try:
+            if item.get("has_summary"):
+                continue
+            idle = store.idle_seconds_since_last_event(conv_id)
+            if idle is None:
+                idle = now - float(item["mtime"])
+            if idle < SUMMARIZE_IDLE_THRESHOLD_S:
+                continue
+            asyncio.create_task(_run_lazy_summarize(store, conv_id))
+            scheduled += 1
+        except Exception:
+            logger.warning(
+                "lazy_summarize_schedule_failed",
+                extra={"conv_id": conv_id},
+                exc_info=True,
+            )
+
+
 @router.post("/conversations", response_model=CreateResponse)
 async def create_conversation() -> CreateResponse:
-    return CreateResponse(conv_id=_store().create())
+    store = _store()
+    try:
+        _schedule_lazy_summaries(store)
+    except Exception:
+        logger.warning("lazy_summarize_scan_failed", exc_info=True)
+    return CreateResponse(conv_id=store.create())
 
 
 @router.get("/conversations", response_model=ListResponse)
