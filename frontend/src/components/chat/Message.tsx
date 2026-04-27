@@ -1,3 +1,4 @@
+import { motion } from "motion/react";
 import { Streamdown } from "streamdown";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
@@ -8,10 +9,15 @@ export function Message({ id }: { id: string }) {
 
   return (
     <div className={cn("flex w-full mb-4", message.role === "user" ? "justify-end" : "justify-start")}>
-      <div className={cn(
-        "max-w-prose px-4 py-3 rounded-lg font-sans",
-        message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-      )}>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18 }}
+        className={cn(
+          "max-w-prose px-4 py-3 rounded-lg font-sans",
+          message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+        )}
+      >
         {message.role === "assistant" ? (
           <Streamdown>{message.content}</Streamdown>
         ) : (
@@ -24,7 +30,7 @@ export function Message({ id }: { id: string }) {
           </div>
         ))}
         {message.isStreaming && <span className="ml-1 inline-block w-2 h-4 bg-current animate-pulse" />}
-      </div>
+      </motion.div>
     </div>
   );
 }

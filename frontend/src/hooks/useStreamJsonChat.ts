@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useChatStore } from "@/stores/chatStore";
+import { useResumeStore } from "@/stores/resumeStore";
 import { createConversation, takeTurnStream } from "@/lib/api";
 import { ndjsonReader } from "@/lib/ndjson";
 import type { StreamJsonEvent } from "@/types/stream";
@@ -9,6 +10,7 @@ export function useStreamJsonChat() {
     conversationId, setConversationId, startUserTurn,
     appendAssistantToken, appendToolCall, finalizeAssistantTurn, setStreaming,
   } = useChatStore();
+  const setLastFailedMessage = useResumeStore(s => s.setLastFailedMessage);
 
   const sendTurn = useCallback(async (message: string) => {
     let convId = conversationId;
@@ -20,11 +22,11 @@ export function useStreamJsonChat() {
     const assistantMsgId = startUserTurn(message);
     setStreaming(true);
 
-    const response = await takeTurnStream(convId, message);
     let pendingToolName: string | null = null;
     let pendingToolInput = "";
 
     try {
+      const response = await takeTurnStream(convId, message);
       for await (const ev of ndjsonReader<StreamJsonEvent>(response.body!)) {
         if (ev.type === "stream_event") {
           const sub = ev.event;
@@ -56,11 +58,16 @@ export function useStreamJsonChat() {
           finalizeAssistantTurn(assistantMsgId);
         }
       }
+    } catch {
+      setLastFailedMessage(message);
+      appendAssistantToken(assistantMsgId, "\n\n[connection lost — click Resume]");
+      finalizeAssistantTurn(assistantMsgId);
+      setStreaming(false);
     } finally {
       setStreaming(false);
     }
   }, [conversationId, setConversationId, startUserTurn, appendAssistantToken,
-      appendToolCall, finalizeAssistantTurn, setStreaming]);
+      appendToolCall, finalizeAssistantTurn, setStreaming, setLastFailedMessage]);
 
   return { sendTurn };
 }
