@@ -1,0 +1,342 @@
+{
+  "tokens": {
+    "hpe-white-(rgb)": "#FFFFFF",
+    "hpe-hpe-green-(rgb)": "#01A982",
+    "hpe-midnight-(rgb)": "#292D3A",
+    "hpe-black-(rgb)": "#000000",
+    "hpe-jade-green-(rgb)": "#05CC93",
+    "hpe-mint-green-(rgb)": "#00E0AF",
+    "hpe-cyan-(rgb)": "#62E5F6",
+    "hpe-blue-(rgb)": "#0070F8",
+    "hpe-purple-(rgb)": "#7764FC",
+    "hpe-light-cloud-(rgb)": "#F7F7F7",
+    "hpe-cloud-(rgb)": "#E6E8E9",
+    "hpe-dark-cloud-(rgb)": "#D4D8DB",
+    "hpe-slate-(rgb)": "#B1B9BE",
+    "hpe-light-carbon-(rgb)": "#7D8A92",
+    "hpe-carbon-(rgb)": "#535C66",
+    "hpe-dark-carbon-(rgb)": "#3E4550",
+    "hpe-charcoal-(rgb)": "#111212",
+    "hpe-aqua-green-(rgb)": "#66EBCF",
+    "hpe-moss-green-(rgb)": "#068667",
+    "hpe-cyan-2-(rgb)": "#99F0F9",
+    "hpe-cyan-3-(rgb)": "#00DBE4",
+    "hpe-cyan-4-(rgb)": "#00A4B3",
+    "hpe-cyan-5-(rgb)": "#04909D",
+    "hpe-blue-2-(rgb)": "#65AEF9",
+    "hpe-blue-3-(rgb)": "#3994F7",
+    "hpe-blue-4-(rgb)": "#0055DA",
+    "hpe-blue-5-(rgb)": "#003CAE",
+    "hpe-purple-2-(rgb)": "#B7A2FC",
+    "hpe-purple-3-(rgb)": "#9B84FC",
+    "hpe-purple-4-(rgb)": "#5D45D6",
+    "hpe-purple-5-(rgb)": "#3C3AA1",
+    "hpe-plum-2-(rgb)": "#C98AD4",
+    "hpe-plum-3-(rgb)": "#A455B3",
+    "hpe-plum-(rgb)": "#873492",
+    "hpe-plum-4-(rgb)": "#6C2B7C",
+    "hpe-plum-5-(rgb)": "#5E1F68",
+    "hpe-fuchsia-2-(rgb)": "#FC9DDC",
+    "hpe-fuchsia-3-(rgb)": "#DB72B8",
+    "hpe-fuchsia-(rgb)": "#CC54A4",
+    "hpe-fuchsia-4-(rgb)": "#AD4089",
+    "hpe-fuchsia-5-(rgb)": "#7F245C",
+    "hpe-coral-2-(rgb)": "#FC988B",
+    "hpe-coral-3-(rgb)": "#E5786A",
+    "hpe-coral-(rgb)": "#D25F4B",
+    "hpe-coral-4-(rgb)": "#C64F3A",
+    "hpe-coral-5-(rgb)": "#B4422A",
+    "hpe-gold-2-(rgb)": "#F9CC61",
+    "hpe-gold-3-(rgb)": "#ECBE4F",
+    "hpe-gold-(rgb)": "#DEB146",
+    "hpe-gold-4-(rgb)": "#C89E3A",
+    "hpe-gold-5-(rgb)": "#B38A29"
+  },
+  "swatches": [
+    {
+      "name": "White (RGB)",
+      "hex": "#FFFFFF",
+      "model": "RGB"
+    },
+    {
+      "name": "HPE Green (RGB)",
+      "hex": "#01A982",
+      "model": "RGB"
+    },
+    {
+      "name": "Midnight (RGB)",
+      "hex": "#292D3A",
+      "model": "RGB"
+    },
+    {
+      "name": "Black (RGB)",
+      "hex": "#000000",
+      "model": "RGB"
+    },
+    {
+      "name": "Jade Green (RGB)",
+      "hex": "#05CC93",
+      "model": "RGB"
+    },
+    {
+      "name": "Mint Green (RGB)",
+      "hex": "#00E0AF",
+      "model": "RGB"
+    },
+    {
+      "name": "Cyan (RGB)",
+      "hex": "#62E5F6",
+      "model": "RGB"
+    },
+    {
+      "name": "Blue (RGB)",
+      "hex": "#0070F8",
+      "model": "RGB"
+    },
+    {
+      "name": "Purple (RGB)",
+      "hex": "#7764FC",
+      "model": "RGB"
+    },
+    {
+      "name": "Light Cloud (RGB)",
+      "hex": "#F7F7F7",
+      "model": "RGB"
+    },
+    {
+      "name": "Cloud (RGB)",
+      "hex": "#E6E8E9",
+      "model": "RGB"
+    },
+    {
+      "name": "Dark Cloud (RGB)",
+      "hex": "#D4D8DB",
+      "model": "RGB"
+    },
+    {
+      "name": "Slate (RGB)",
+      "hex": "#B1B9BE",
+      "model": "RGB"
+    },
+    {
+      "name": "Light Carbon (RGB)",
+      "hex": "#7D8A92",
+      "model": "RGB"
+    },
+    {
+      "name": "Carbon (RGB)",
+      "hex": "#535C66",
+      "model": "RGB"
+    },
+    {
+      "name": "Dark Carbon (RGB)",
+      "hex": "#3E4550",
+      "model": "RGB"
+    },
+    {
+      "name": "Charcoal (RGB)",
+      "hex": "#111212",
+      "model": "RGB"
+    },
+    {
+      "name": "Aqua Green (RGB)",
+      "hex": "#66EBCF",
+      "model": "RGB"
+    },
+    {
+      "name": "Mint Green (RGB)",
+      "hex": "#00E0AF",
+      "model": "RGB"
+    },
+    {
+      "name": "Jade Green (RGB)",
+      "hex": "#05CC93",
+      "model": "RGB"
+    },
+    {
+      "name": "HPE Green (RGB)",
+      "hex": "#01A982",
+      "model": "RGB"
+    },
+    {
+      "name": "Moss Green (RGB)",
+      "hex": "#068667",
+      "model": "RGB"
+    },
+    {
+      "name": "Cyan 2 (RGB)",
+      "hex": "#99F0F9",
+      "model": "RGB"
+    },
+    {
+      "name": "Cyan (RGB)",
+      "hex": "#62E5F6",
+      "model": "RGB"
+    },
+    {
+      "name": "Cyan 3 (RGB)",
+      "hex": "#00DBE4",
+      "model": "RGB"
+    },
+    {
+      "name": "Cyan 4 (RGB)",
+      "hex": "#00A4B3",
+      "model": "RGB"
+    },
+    {
+      "name": "Cyan 5 (RGB)",
+      "hex": "#04909D",
+      "model": "RGB"
+    },
+    {
+      "name": "Blue 2 (RGB)",
+      "hex": "#65AEF9",
+      "model": "RGB"
+    },
+    {
+      "name": "Blue 3 (RGB)",
+      "hex": "#3994F7",
+      "model": "RGB"
+    },
+    {
+      "name": "Blue (RGB)",
+      "hex": "#0070F8",
+      "model": "RGB"
+    },
+    {
+      "name": "Blue 4 (RGB)",
+      "hex": "#0055DA",
+      "model": "RGB"
+    },
+    {
+      "name": "Blue 5 (RGB)",
+      "hex": "#003CAE",
+      "model": "RGB"
+    },
+    {
+      "name": "Purple 2 (RGB)",
+      "hex": "#B7A2FC",
+      "model": "RGB"
+    },
+    {
+      "name": "Purple 3 (RGB)",
+      "hex": "#9B84FC",
+      "model": "RGB"
+    },
+    {
+      "name": "Purple (RGB)",
+      "hex": "#7764FC",
+      "model": "RGB"
+    },
+    {
+      "name": "Purple 4 (RGB)",
+      "hex": "#5D45D6",
+      "model": "RGB"
+    },
+    {
+      "name": "Purple 5 (RGB)",
+      "hex": "#3C3AA1",
+      "model": "RGB"
+    },
+    {
+      "name": "Plum 2 (RGB)",
+      "hex": "#C98AD4",
+      "model": "RGB"
+    },
+    {
+      "name": "Plum 3 (RGB)",
+      "hex": "#A455B3",
+      "model": "RGB"
+    },
+    {
+      "name": "Plum (RGB)",
+      "hex": "#873492",
+      "model": "RGB"
+    },
+    {
+      "name": "Plum 4 (RGB)",
+      "hex": "#6C2B7C",
+      "model": "RGB"
+    },
+    {
+      "name": "Plum 5 (RGB)",
+      "hex": "#5E1F68",
+      "model": "RGB"
+    },
+    {
+      "name": "Fuchsia 2 (RGB)",
+      "hex": "#FC9DDC",
+      "model": "RGB"
+    },
+    {
+      "name": "Fuchsia 3 (RGB)",
+      "hex": "#DB72B8",
+      "model": "RGB"
+    },
+    {
+      "name": "Fuchsia (RGB)",
+      "hex": "#CC54A4",
+      "model": "RGB"
+    },
+    {
+      "name": "Fuchsia 4 (RGB)",
+      "hex": "#AD4089",
+      "model": "RGB"
+    },
+    {
+      "name": "Fuchsia 5 (RGB)",
+      "hex": "#7F245C",
+      "model": "RGB"
+    },
+    {
+      "name": "Coral 2 (RGB)",
+      "hex": "#FC988B",
+      "model": "RGB"
+    },
+    {
+      "name": "Coral 3 (RGB)",
+      "hex": "#E5786A",
+      "model": "RGB"
+    },
+    {
+      "name": "Coral (RGB)",
+      "hex": "#D25F4B",
+      "model": "RGB"
+    },
+    {
+      "name": "Coral 4 (RGB) ",
+      "hex": "#C64F3A",
+      "model": "RGB"
+    },
+    {
+      "name": "Coral 5 (RGB)",
+      "hex": "#B4422A",
+      "model": "RGB"
+    },
+    {
+      "name": "Gold 2 (RGB)",
+      "hex": "#F9CC61",
+      "model": "RGB"
+    },
+    {
+      "name": "Gold 3 (RGB)",
+      "hex": "#ECBE4F",
+      "model": "RGB"
+    },
+    {
+      "name": "Gold (RGB)",
+      "hex": "#DEB146",
+      "model": "RGB"
+    },
+    {
+      "name": "Gold 4 (RGB)",
+      "hex": "#C89E3A",
+      "model": "RGB"
+    },
+    {
+      "name": "Gold 5 (RGB)",
+      "hex": "#B38A29",
+      "model": "RGB"
+    }
+  ]
+}
