@@ -11,7 +11,9 @@ router = APIRouter(prefix="/api/output", dependencies=[Depends(require_cf_access
 
 
 def _validate_path_component(value: str) -> None:
-    if "/" in value or "\\" in value or ".." in value:
+    if "/" in value or "\\" in value:
+        raise HTTPException(status_code=400, detail="invalid path component")
+    if value in ("..", "."):
         raise HTTPException(status_code=400, detail="invalid path component")
 
 

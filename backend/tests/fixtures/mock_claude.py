@@ -4,6 +4,7 @@ Behavior controlled by env vars (set by tests):
 - MOCK_CLAUDE_MODE: 'success' (default), 'resume_fail', 'hang', 'crash', 'rate_limit'
 - MOCK_CLAUDE_DELAY_MS: per-event delay (default 0)
 - MOCK_CLAUDE_PROMPT_FILE: optional file to echo back as 'thought about: <prompt>'
+- MOCK_CLAUDE_ECHO_STDIN: emit stdin byte count before normal stream when set to 1
 
 Run as: python mock_claude.py -p '<prompt>' --session-id <uuid> ...
 or:    python mock_claude.py -p '<prompt>' --resume <uuid> ...
@@ -11,6 +12,7 @@ or:    python mock_claude.py -p '<prompt>' --resume <uuid> ...
 import argparse
 import json
 import os
+import select
 import sys
 import time
 import uuid
@@ -22,6 +24,14 @@ def emit(event: dict) -> None:
     delay_ms = int(os.environ.get("MOCK_CLAUDE_DELAY_MS", "0"))
     if delay_ms > 0:
         time.sleep(delay_ms / 1000)
+
+
+def emit_stdin_received_if_requested() -> None:
+    if os.environ.get("MOCK_CLAUDE_ECHO_STDIN") != "1":
+        return
+    ready, _, _ = select.select([sys.stdin.buffer], [], [], 0.2)
+    data = sys.stdin.buffer.read() if ready else b""
+    emit({"type": "system", "subtype": "stdin_received", "bytes": len(data)})
 
 
 def main() -> int:
@@ -47,6 +57,7 @@ def main() -> int:
     if mode == "hang":
         time.sleep(600)  # block forever; test should kill us
         return 0
+    emit_stdin_received_if_requested()
     if mode == "rate_limit":
         emit({"type": "system", "subtype": "api_retry",
               "wait_seconds": 45})

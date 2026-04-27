@@ -69,6 +69,7 @@ async def test_terminate_then_kill_on_cancel(mgr, monkeypatch):
 async def test_resume_failure_falls_back_to_fresh_session(mgr, monkeypatch, tmp_path):
     """When --resume errors, retry with a fresh --session-id and pipe transcript."""
     monkeypatch.setenv("MOCK_CLAUDE_MODE", "resume_fail")
+    monkeypatch.setenv("MOCK_CLAUDE_ECHO_STDIN", "1")
     transcript_file = tmp_path / "c3.json"
     transcript_file.write_text(
         '{"type":"meta","session_uuid":"original-uuid"}\n'
@@ -85,8 +86,18 @@ async def test_resume_failure_falls_back_to_fresh_session(mgr, monkeypatch, tmp_
     assert isinstance(result, SpawnResult)
     assert result.fallback_used is True
     assert result.new_session_uuid != "original-uuid"
-    async for _ in mgr.stream_events(result.proc):
-        pass
+    events = []
+    async for ev in mgr.stream_events(result.proc):
+        events.append(ev)
+
+    assert any(ev.get("type") == "result" for ev in events)
+    stdin_events = [
+        ev
+        for ev in events
+        if ev.get("type") == "system" and ev.get("subtype") == "stdin_received"
+    ]
+    assert stdin_events
+    assert stdin_events[0]["bytes"] > 0
 
 
 async def test_stderr_drain_does_not_deadlock(mgr, monkeypatch):
