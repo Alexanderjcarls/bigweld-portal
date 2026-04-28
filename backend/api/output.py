@@ -30,7 +30,7 @@ async def upload_output(conv_id: str, filename: str, request: Request):
     target.parent.mkdir(parents=True, exist_ok=True)
     content = await request.body()
     target.write_bytes(content)
-    return {"ok": True, "bytes": len(content)}
+    return {"ok": True, "path": str(target.resolve()), "bytes": len(content)}
 
 
 @router.get("/{conv_id}/{filename}")

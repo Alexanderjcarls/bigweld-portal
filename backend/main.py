@@ -21,6 +21,7 @@ from backend.api.conversations import _store, router as conversations_router
 from backend.api.output import router as output_router
 from backend.api.render import router as render_router
 from backend.api.summarize import router as summarize_router
+from backend.api.upload import router as upload_router
 from backend.core.summarizer import sweep_idle_conversations
 from backend.metrics import router as metrics_router
 
@@ -60,6 +61,7 @@ app.include_router(conversations_router)
 app.include_router(output_router)
 app.include_router(render_router)
 app.include_router(summarize_router)
+app.include_router(upload_router)
 app.include_router(metrics_router)
 
 

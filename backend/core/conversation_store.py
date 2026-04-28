@@ -149,6 +149,39 @@ class ConversationStore:
         }
         self.append_event(conv_id, event)
 
+    def append_usage(self, conv_id: str, usage: dict[str, Any]) -> None:
+        event = {
+            "type": "usage",
+            "input_tokens": self._int_token(usage.get("input_tokens")),
+            "cache_creation_input_tokens": self._int_token(
+                usage.get("cache_creation_input_tokens")
+            ),
+            "cache_read_input_tokens": self._int_token(
+                usage.get("cache_read_input_tokens")
+            ),
+            "output_tokens": self._int_token(usage.get("output_tokens")),
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "conv_id": conv_id,
+        }
+        self.append_event(conv_id, event)
+
+    def get_latest_usage(self, conv_id: str) -> dict[str, int] | None:
+        """Return the most recent usage token fields for a conversation."""
+        for ev in reversed(self.read_events(conv_id)):
+            if ev.get("type") != "usage":
+                continue
+            return {
+                "input_tokens": self._int_token(ev.get("input_tokens")),
+                "cache_creation_input_tokens": self._int_token(
+                    ev.get("cache_creation_input_tokens")
+                ),
+                "cache_read_input_tokens": self._int_token(
+                    ev.get("cache_read_input_tokens")
+                ),
+                "output_tokens": self._int_token(ev.get("output_tokens")),
+            }
+        return None
+
     def write_summary(self, conv_id: str, content: str) -> None:
         lock_path = self._lock_path(conv_id)
         with lock_path.open("a") as lockf:
@@ -207,3 +240,9 @@ class ConversationStore:
             for block in blocks
             if block.get("kind") == "text" and isinstance(block.get("text"), str)
         )
+
+    @staticmethod
+    def _int_token(value: Any) -> int:
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return 0

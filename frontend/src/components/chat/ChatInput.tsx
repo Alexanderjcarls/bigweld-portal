@@ -5,11 +5,20 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/stores/chatStore";
 import { useStreamJsonChat } from "@/hooks/useStreamJsonChat";
+import { createConversation, uploadFile } from "@/lib/api";
+import { classifyFile } from "@/lib/fileKind";
 
 const SKILLS = ["graph", "gaps", "orphans", "rollup", "dupes", "citations", "search-past-conversations"];
 
 export function ChatInput() {
-  const { isStreaming, attachFile, attachedFiles, clearAttachments } = useChatStore();
+  const {
+    conversationId,
+    setConversationId,
+    isStreaming,
+    attachFile,
+    attachedFiles,
+    clearAttachments,
+  } = useChatStore();
   const { sendTurn } = useStreamJsonChat();
   const dropRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<() => void>(() => {});
@@ -46,9 +55,30 @@ export function ChatInput() {
       e.preventDefault();
       const files = e.dataTransfer?.files;
       if (!files) return;
+      let convIdForDrop = conversationId;
+      const ensureConversationId = async () => {
+        if (convIdForDrop) return convIdForDrop;
+        const created = await createConversation();
+        convIdForDrop = created.conv_id;
+        setConversationId(convIdForDrop);
+        return convIdForDrop;
+      };
       for (const f of Array.from(files)) {
-        const data = await f.text();
-        attachFile({ name: f.name, size: f.size, data });
+        if (classifyFile(f) === "text") {
+          const data = await f.text();
+          attachFile({ kind: "text", name: f.name, size: f.size, data });
+          continue;
+        }
+
+        try {
+          const convId = await ensureConversationId();
+          const name = sanitizeAttachmentFilename(f.name);
+          const uploaded = await uploadFile(convId, name, f);
+          attachFile({ kind: "binary", name: f.name, size: f.size, path: uploaded.path });
+        } catch (err) {
+          console.error("attachment upload failed", err);
+          window.alert(`Could not attach ${f.name}`);
+        }
       }
     };
     const onDragOver = (e: DragEvent) => e.preventDefault();
@@ -58,14 +88,17 @@ export function ChatInput() {
       el.removeEventListener("drop", onDrop);
       el.removeEventListener("dragover", onDragOver);
     };
-  }, [attachFile]);
+  }, [attachFile, conversationId, setConversationId]);
 
   const handleSend = async () => {
     if (!editor) return;
     const text = editor.getText().trim();
     if (!text || isStreaming) return;
     const attachmentSummary = attachedFiles.length
-      ? "\n\n" + attachedFiles.map(f => `[attachment: ${f.name}]\n${f.data}`).join("\n\n")
+      ? "\n\n" + attachedFiles.map(f => {
+        if (f.kind === "text") return `[attachment: ${f.name}]\n${f.data}`;
+        return `[attached file: ${f.path}]`;
+      }).join("\n\n")
       : "";
     editor.commands.setContent("");
     clearAttachments();
@@ -78,7 +111,9 @@ export function ChatInput() {
       {attachedFiles.length > 0 && (
         <div className="flex gap-2 flex-wrap text-xs">
           {attachedFiles.map((f, i) => (
-            <span key={i} className="bg-muted px-2 py-1 rounded">{f.name}</span>
+            f.kind === "binary"
+              ? <span key={i} className="bg-primary/20 px-2 py-1 rounded">📎 {f.name}</span>
+              : <span key={i} className="bg-muted px-2 py-1 rounded">{f.name}</span>
           ))}
         </div>
       )}
@@ -91,4 +126,8 @@ export function ChatInput() {
       </div>
     </div>
   );
+}
+
+function sanitizeAttachmentFilename(name: string): string {
+  return name.replace(/[\/\\\s]+/g, "_").replace(/^\.+/, "") || "attachment";
 }

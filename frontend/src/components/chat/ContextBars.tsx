@@ -1,29 +1,40 @@
 import { useQuery } from "@tanstack/react-query";
 import { getBudget } from "@/lib/api";
+import { useChatStore } from "@/stores/chatStore";
 
-function Bar({ label, pct }: { label: string; pct: number }) {
+function Bar({ label, pct, total }: { label: string; pct: number; total?: number }) {
   return (
-    <div className="flex items-center gap-2 font-sans text-sm">
-      <span className="text-muted-foreground w-16">{label}</span>
-      <div className="h-2.5 w-32 overflow-hidden rounded bg-muted">
-        <div className="h-full bg-primary" style={{ width: `${Math.min(pct, 100)}%` }} />
+    <div
+      className="flex items-center gap-2 text-xs font-sans"
+      title={total ? `${label}: ${total.toLocaleString()} token window` : undefined}
+    >
+      <span className="text-muted-foreground w-20">{label}</span>
+      <div className="w-40 h-2.5 bg-muted rounded overflow-hidden">
+        <div
+          className="h-full bg-primary transition-all"
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
       </div>
-      <span className="text-muted-foreground w-10 text-right">{pct.toFixed(0)}%</span>
+      <span className="text-muted-foreground w-16 text-right">
+        {pct.toFixed(1)}%
+      </span>
     </div>
   );
 }
 
 export function ContextBars() {
+  const conversationId = useChatStore(s => s.conversationId);
   const { data } = useQuery({
-    queryKey: ["budget"],
-    queryFn: getBudget,
+    queryKey: ["budget", conversationId],
+    queryFn: () => getBudget(conversationId),
     refetchInterval: 5000,
+    enabled: true,
   });
   return (
-    <div className="flex flex-col gap-1.5">
-      <Bar label="conv" pct={data?.conversation_context_pct ?? 0} />
-      <Bar label="5h Max" pct={data?.max_5h_pct ?? 0} />
-      <Bar label="7d Max" pct={data?.max_7d_pct ?? 0} />
-    </div>
+    <Bar
+      pct={data?.context_window_pct ?? 0}
+      label="context"
+      total={data?.context_window_total}
+    />
   );
 }

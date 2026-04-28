@@ -1,11 +1,15 @@
 import { create } from "zustand";
 import type { Message, MessageBlock } from "@/types/conversation";
 
+export type AttachedFile =
+  | { kind: "text"; name: string; size: number; data: string }
+  | { kind: "binary"; name: string; size: number; path: string };
+
 interface ChatState {
   conversationId: string | null;
   messages: Message[];
   inputDraft: string;
-  attachedFiles: { name: string; size: number; data: string }[];
+  attachedFiles: AttachedFile[];
   isStreaming: boolean;
 
   setConversationId: (id: string | null) => void;
@@ -18,7 +22,7 @@ interface ChatState {
   finalizeToolUse: (msgId: string, toolUseId: string, output: string, error?: string) => void;
   finalizeAssistantTurn: (id: string) => void;
   setInputDraft: (s: string) => void;
-  attachFile: (f: { name: string; size: number; data: string }) => void;
+  attachFile: (f: AttachedFile) => void;
   clearAttachments: () => void;
   setStreaming: (b: boolean) => void;
   reset: () => void;

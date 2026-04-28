@@ -129,6 +129,7 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
         started_at = time.perf_counter()
         assistant_blocks = AssistantBlockCollector()
         assistant_blocks_written = False
+        usage_written = False
         try:
             result = await _subprocess_mgr.spawn_turn_with_fallback(
                 prompt=body.message,
@@ -150,17 +151,18 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
 
             async for ev in _subprocess_mgr.stream_events(result.proc):
                 assistant_blocks.ingest(ev)
-                if (
-                    ev.get("type") == "result"
-                    and assistant_blocks.has_blocks()
-                    and not assistant_blocks_written
-                ):
-                    store.append_assistant_blocks(
-                        conv_id,
-                        assistant_blocks.blocks,
-                        content=assistant_blocks.text_content(),
-                    )
-                    assistant_blocks_written = True
+                if ev.get("type") == "result":
+                    usage = ev.get("usage")
+                    if isinstance(usage, dict) and not usage_written:
+                        store.append_usage(conv_id, usage)
+                        usage_written = True
+                    if assistant_blocks.has_blocks() and not assistant_blocks_written:
+                        store.append_assistant_blocks(
+                            conv_id,
+                            assistant_blocks.blocks,
+                            content=assistant_blocks.text_content(),
+                        )
+                        assistant_blocks_written = True
                 yield (json.dumps(ev) + "\n").encode("utf-8")
             await result.proc.wait_closed()
             if assistant_blocks.has_blocks() and not assistant_blocks_written:

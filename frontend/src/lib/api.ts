@@ -30,8 +30,27 @@ export async function takeTurnStream(
   return r;
 }
 
-export async function getBudget() {
-  const r = await fetch("/api/budget");
+export async function uploadFile(
+  convId: string,
+  filename: string,
+  blob: Blob,
+): Promise<{ path: string }> {
+  const r = await fetch(
+    `/api/upload/${encodeURIComponent(convId)}/${encodeURIComponent(filename)}`,
+    {
+      method: "PUT",
+      body: blob,
+    },
+  );
+  if (!r.ok) throw new Error(`upload: ${r.status}`);
+  return r.json();
+}
+
+export async function getBudget(
+  convId?: string | null,
+): Promise<{ context_window_pct: number; context_window_total: number }> {
+  const url = convId ? `/api/budget?conv_id=${encodeURIComponent(convId)}` : "/api/budget";
+  const r = await fetch(url);
   if (!r.ok) throw new Error(`budget: ${r.status}`);
   return r.json();
 }
