@@ -7,7 +7,7 @@ Type=simple
 User=matrix_admin
 Group=matrix_admin
 WorkingDirectory=/datapool/bigweld-portal
-Environment="PATH=/datapool/bigweld-portal/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/matrix_admin/.local/bin:/datapool/bigweld-portal/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="BIGWELD_PORTAL_ROOT=/datapool/bigweld-portal"
 ExecStart=/datapool/bigweld-portal/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8884
 Restart=on-failure

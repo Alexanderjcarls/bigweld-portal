@@ -122,6 +122,33 @@ class ConversationStore:
             finally:
                 fcntl.flock(lockf, fcntl.LOCK_UN)
 
+    def append_event(self, conv_id: str, event: dict[str, Any]) -> None:
+        """Append one JSONL event using the same flock path as the hooks."""
+        lock_path = self._lock_path(conv_id)
+        with lock_path.open("a") as lockf:
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+            try:
+                path = self.path_for(conv_id)
+                with path.open("a") as f:
+                    f.write(json.dumps(event) + "\n")
+            finally:
+                fcntl.flock(lockf, fcntl.LOCK_UN)
+
+    def append_assistant_blocks(
+        self,
+        conv_id: str,
+        blocks: list[dict[str, Any]],
+        content: str | None = None,
+    ) -> None:
+        event = {
+            "type": "assistant",
+            "blocks": blocks,
+            "content": content if content is not None else self._blocks_text(blocks),
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "conv_id": conv_id,
+        }
+        self.append_event(conv_id, event)
+
     def write_summary(self, conv_id: str, content: str) -> None:
         lock_path = self._lock_path(conv_id)
         with lock_path.open("a") as lockf:
@@ -172,3 +199,11 @@ class ConversationStore:
             except ValueError:
                 continue
         return None
+
+    @staticmethod
+    def _blocks_text(blocks: list[dict[str, Any]]) -> str:
+        return "".join(
+            block.get("text", "")
+            for block in blocks
+            if block.get("kind") == "text" and isinstance(block.get("text"), str)
+        )

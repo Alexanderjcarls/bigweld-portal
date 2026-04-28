@@ -8,7 +8,13 @@ const FENCE_RE = /```(mermaid|d2|plantuml|graphviz|structurizr|bpmn)\n([\s\S]+?)
  * tees the SOURCE (last block wins, per replace pattern) into workspaceStore. */
 export function useFenceDetector(): void {
   const lastAssistantContent = useChatStore(
-    s => s.messages.filter(m => m.role === "assistant").slice(-1)[0]?.content
+    s => s.messages
+      .filter(m => m.role === "assistant")
+      .slice(-1)[0]
+      ?.blocks
+      .filter(block => block.kind === "text")
+      .map(block => block.text)
+      .join("\n")
   );
   const setSource = useWorkspaceStore(s => s.setSource);
 

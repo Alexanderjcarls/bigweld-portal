@@ -12,6 +12,7 @@ export function ChatInput() {
   const { isStreaming, attachFile, attachedFiles, clearAttachments } = useChatStore();
   const { sendTurn } = useStreamJsonChat();
   const dropRef = useRef<HTMLDivElement>(null);
+  const handleSendRef = useRef<() => void>(() => {});
 
   const editor = useEditor({
     extensions: [
@@ -26,6 +27,16 @@ export function ChatInput() {
       }),
     ],
     content: "",
+    editorProps: {
+      handleKeyDown: (_view, event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          handleSendRef.current();
+          return true;
+        }
+        return false;
+      },
+    },
   });
 
   useEffect(() => {
@@ -56,10 +67,11 @@ export function ChatInput() {
     const attachmentSummary = attachedFiles.length
       ? "\n\n" + attachedFiles.map(f => `[attachment: ${f.name}]\n${f.data}`).join("\n\n")
       : "";
-    await sendTurn(text + attachmentSummary);
     editor.commands.setContent("");
     clearAttachments();
+    await sendTurn(text + attachmentSummary);
   };
+  handleSendRef.current = handleSend;
 
   return (
     <div ref={dropRef} className="border-t p-4 space-y-2 font-sans">
@@ -72,7 +84,7 @@ export function ChatInput() {
       )}
       <EditorContent
         editor={editor}
-        className="min-h-[60px] max-h-[200px] overflow-y-auto rounded border p-2 prose prose-sm focus-within:ring-2 focus-within:ring-primary"
+        className="min-h-[60px] max-h-[200px] w-full max-w-none overflow-y-auto rounded border p-2 prose prose-sm focus-within:ring-2 focus-within:ring-primary"
       />
       <div className="flex justify-end">
         <Button onClick={handleSend} disabled={isStreaming}>Send</Button>

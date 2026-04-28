@@ -102,6 +102,31 @@ def test_read_events_skips_corrupt_lines(store):
     assert user_and_assistant[1]["content"] == "hello"
 
 
+def test_append_assistant_blocks_uses_hook_lock_and_round_trips(store):
+    conv_id = store.create()
+    blocks = [
+        {"kind": "text", "text": "pre"},
+        {
+            "kind": "tool_use",
+            "id": "toolu_1",
+            "name": "Bash",
+            "input": {"command": "printf ok"},
+            "output": "ok",
+            "isStreaming": False,
+        },
+        {"kind": "text", "text": "post"},
+    ]
+
+    store.append_assistant_blocks(conv_id, blocks)
+
+    event = store.read_events(conv_id)[-1]
+    assert event["type"] == "assistant"
+    assert event["blocks"] == blocks
+    assert event["content"] == "prepost"
+    assert event["conv_id"] == conv_id
+    assert event["ts"].endswith("Z")
+
+
 def test_read_events_empty_file(store):
     conv_id = store.create()
     # Wipe to truly empty

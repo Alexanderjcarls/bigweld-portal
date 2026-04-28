@@ -39,7 +39,7 @@ For destructive ops (`DELETE / DETACH DELETE / DROP / REMOVE`):
 Every write you run should append a line to the audit log via the helper:
 
 ```bash
-python /datapool/bigweld/scripts/audit_write.py \
+/datapool/bigweld/scripts/audit_write.py \
   --cypher "<cypher>" \
   --params '<json>' \
   --conv-id "$BIGWELD_CONVERSATION_ID"
@@ -68,10 +68,12 @@ When uncertain about graph structure, invoke `/graph` first.
 The substrate lives at `/datapool/bigweld/`. Query Neo4j via Bash:
 
 ```bash
-python /datapool/bigweld/neo4j-client.py --query "<cypher>"
+/datapool/bigweld/scripts/neo4j-client.py --query "<cypher>"
 # or for one-off exploration:
 cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"
 ```
+
+The `neo4j-client.py` and `audit_write.py` scripts have a venv shebang (`#!/datapool/bigweld/code/.venv/bin/python3`) and are executable — invoke them directly. **Do not** prepend `python` or `python3`; the system interpreter doesn't have the `neo4j` driver and you'll see `ModuleNotFoundError`.
 
 You can write as well as read — see "Conversational graph maintenance" above for the workflow.
 

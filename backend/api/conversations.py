@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.auth import require_cf_access_email
+from backend.core.assistant_blocks import AssistantBlockCollector
 from backend.core.config import SUMMARIZE_IDLE_THRESHOLD_S
 from backend.core.conversation_store import ConversationStore
 from backend.core.summarizer import summarize_conversation
@@ -126,6 +127,8 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
 
     async def stream() -> AsyncIterator[bytes]:
         started_at = time.perf_counter()
+        assistant_blocks = AssistantBlockCollector()
+        assistant_blocks_written = False
         try:
             result = await _subprocess_mgr.spawn_turn_with_fallback(
                 prompt=body.message,
@@ -146,8 +149,26 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
                 store.set_session_uuid(conv_id, result.new_session_uuid)
 
             async for ev in _subprocess_mgr.stream_events(result.proc):
+                assistant_blocks.ingest(ev)
+                if (
+                    ev.get("type") == "result"
+                    and assistant_blocks.has_blocks()
+                    and not assistant_blocks_written
+                ):
+                    store.append_assistant_blocks(
+                        conv_id,
+                        assistant_blocks.blocks,
+                        content=assistant_blocks.text_content(),
+                    )
+                    assistant_blocks_written = True
                 yield (json.dumps(ev) + "\n").encode("utf-8")
             await result.proc.wait_closed()
+            if assistant_blocks.has_blocks() and not assistant_blocks_written:
+                store.append_assistant_blocks(
+                    conv_id,
+                    assistant_blocks.blocks,
+                    content=assistant_blocks.text_content(),
+                )
         except Exception as exc:
             turn_total.labels(status="error").inc()
             turn_duration_seconds.observe(time.perf_counter() - started_at)

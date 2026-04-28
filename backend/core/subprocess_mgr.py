@@ -76,6 +76,7 @@ class SubprocessManager:
         env["ANTHROPIC_API_KEY"] = ""
         env["BIGWELD_CONVERSATION_ID"] = conversation_id
         env["BIGWELD_CONVERSATION_FILE"] = str(conversation_file)
+        env["BIGWELD_BACKEND_ASSISTANT_BLOCKS"] = "1"
         return env
 
     def _build_args(self, prompt: str, session_uuid: str, is_resume: bool) -> list[str]:
@@ -116,6 +117,7 @@ class SubprocessManager:
                 "ANTHROPIC_API_KEY": env["ANTHROPIC_API_KEY"],
                 "BIGWELD_CONVERSATION_ID": env["BIGWELD_CONVERSATION_ID"],
                 "BIGWELD_CONVERSATION_FILE": env["BIGWELD_CONVERSATION_FILE"],
+                "BIGWELD_BACKEND_ASSISTANT_BLOCKS": env["BIGWELD_BACKEND_ASSISTANT_BLOCKS"],
             },
             startup_started_at=startup_started_at,
         )

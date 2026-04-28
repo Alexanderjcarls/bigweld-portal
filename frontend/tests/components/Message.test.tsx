@@ -13,8 +13,7 @@ describe("Message", () => {
       {
         id: "msg-user",
         role: "user",
-        content: "hello Bigweld",
-        toolCalls: [],
+        blocks: [{ kind: "text", text: "hello Bigweld" }],
         ts: new Date().toISOString(),
         isStreaming: false,
       },
