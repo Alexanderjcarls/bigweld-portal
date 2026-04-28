@@ -5,11 +5,21 @@ import { useShallow } from "zustand/react/shallow";
 
 export function MessageThread() {
   const messageIds = useChatStore(useShallow(s => s.messages.map(m => m.id)));
+  const lastMessageSize = useChatStore(s => {
+    const last = s.messages[s.messages.length - 1];
+    if (!last) return 0;
+    let n = last.blocks.length;
+    for (const b of last.blocks) {
+      if (b.kind === "text" || b.kind === "thinking") n += b.text.length;
+      else if (b.kind === "tool_use") n += (b.output?.length ?? 0);
+    }
+    return n;
+  });
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messageIds.length]);
+  }, [messageIds.length, lastMessageSize]);
 
   if (messageIds.length === 0) {
     return (
