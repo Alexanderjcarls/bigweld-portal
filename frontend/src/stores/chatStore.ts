@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import type { Message, MessageBlock } from "@/types/conversation";
 
-export type AttachedFile =
-  | { kind: "text"; name: string; size: number; data: string }
-  | { kind: "binary"; name: string; size: number; path: string };
+export interface AttachedFile {
+  name: string;
+  size: number;
+  path: string;
+}
 
 interface ChatState {
   conversationId: string | null;

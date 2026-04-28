@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/stores/chatStore";
 import { useStreamJsonChat } from "@/hooks/useStreamJsonChat";
 import { createConversation, uploadFile } from "@/lib/api";
-import { classifyFile } from "@/lib/fileKind";
 
 const SKILLS = ["graph", "gaps", "orphans", "rollup", "dupes", "citations", "search-past-conversations"];
 
@@ -64,17 +63,11 @@ export function ChatInput() {
         return convIdForDrop;
       };
       for (const f of Array.from(files)) {
-        if (classifyFile(f) === "text") {
-          const data = await f.text();
-          attachFile({ kind: "text", name: f.name, size: f.size, data });
-          continue;
-        }
-
         try {
           const convId = await ensureConversationId();
           const name = sanitizeAttachmentFilename(f.name);
           const uploaded = await uploadFile(convId, name, f);
-          attachFile({ kind: "binary", name: f.name, size: f.size, path: uploaded.path });
+          attachFile({ name: f.name, size: f.size, path: uploaded.path });
         } catch (err) {
           console.error("attachment upload failed", err);
           window.alert(`Could not attach ${f.name}`);
@@ -95,10 +88,7 @@ export function ChatInput() {
     const text = editor.getText().trim();
     if (!text || isStreaming) return;
     const attachmentSummary = attachedFiles.length
-      ? "\n\n" + attachedFiles.map(f => {
-        if (f.kind === "text") return `[attachment: ${f.name}]\n${f.data}`;
-        return `[attached file: ${f.path}]`;
-      }).join("\n\n")
+      ? "\n\n" + attachedFiles.map(f => `[attached file: ${f.path}]`).join("\n\n")
       : "";
     editor.commands.setContent("");
     clearAttachments();
@@ -111,9 +101,7 @@ export function ChatInput() {
       {attachedFiles.length > 0 && (
         <div className="flex gap-2 flex-wrap text-xs">
           {attachedFiles.map((f, i) => (
-            f.kind === "binary"
-              ? <span key={i} className="bg-primary/20 px-2 py-1 rounded">📎 {f.name}</span>
-              : <span key={i} className="bg-muted px-2 py-1 rounded">{f.name}</span>
+            <span key={i} className="bg-primary/20 px-2 py-1 rounded">📎 {f.name}</span>
           ))}
         </div>
       )}
