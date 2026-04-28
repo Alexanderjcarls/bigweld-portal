@@ -38,14 +38,7 @@ mkdir -p "$CACHE_DIR" "$(dirname "$LOG_FILE")"
 
 # Read the Claude Code stdin payload
 INPUT=$(cat)
-PROMPT=$(printf '%s' "$INPUT" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-    print(d.get("prompt", "").strip())
-except Exception:
-    print("")
-' 2>/dev/null || echo "")
+PROMPT=$(printf '%s' "$INPUT" | jq -r '(.prompt // "") | gsub("^\\s+|\\s+$"; "")' 2>/dev/null || echo "")
 
 # Skip empty or trivial prompts
 if [ -z "$PROMPT" ] || [ ${#PROMPT} -lt 8 ]; then
@@ -60,14 +53,7 @@ WINDOW=1800   # 30 minutes
 if [ -f "$DEDUP_FILE" ]; then
     LAST_TS=$(grep "\"hash\":\"$PROMPT_HASH\"" "$DEDUP_FILE" 2>/dev/null \
         | tail -1 \
-        | python3 -c '
-import json, sys
-try:
-    d = json.loads(sys.stdin.read().strip())
-    print(int(d.get("ts", 0)))
-except Exception:
-    print(0)
-' 2>/dev/null || echo "0")
+        | jq -r '.ts // 0' 2>/dev/null || echo "0")
     if [ "$LAST_TS" -gt 0 ] && [ $((NOW - LAST_TS)) -lt $WINDOW ]; then
         # Recent fire on same prompt — skip injection
         echo "$(date -Iseconds) skip dedup hash=$PROMPT_HASH age=$((NOW - LAST_TS))s" >> "$LOG_FILE"
@@ -97,28 +83,17 @@ RESULTS=$("$NEO4J_CLIENT" \
 }
 
 # Format as additionalContext markdown
-ADDITIONAL=$(printf '%s' "$RESULTS" | python3 -c '
-import json, sys
-try:
-    rows = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-if not rows:
-    sys.exit(0)
-lines = ["# Bigweld memory recall — articles relevant to this prompt", ""]
-for r in rows[:3]:
-    slug = r.get("slug", "")
-    title = r.get("title", "(untitled)")
-    body = (r.get("body", "") or "").strip()
-    score = r.get("score", 0)
-    # Truncate cliff_notes to ~800 chars to keep budget tight
-    if len(body) > 800:
-        body = body[:800].rsplit(" ", 1)[0] + "…"
-    lines.append(f"## [{slug}] {title}  (score: {score:.3f})")
-    lines.append("")
-    lines.append(body)
-    lines.append("")
-print("\n".join(lines))
+ADDITIONAL=$(printf '%s' "$RESULTS" | jq -r '
+if type != "array" or length == 0 then empty
+else
+  (["# Bigweld memory recall — articles relevant to this prompt", ""] +
+  (.[0:3][] | [
+    "## [" + (.slug // "") + "] " + (.title // "(untitled)") + "  (score: " + ((.score // 0) | tonumber | . * 1000 | round / 1000 | tostring) + ")",
+    "",
+    (((.body // "") | tostring | gsub("^\\s+|\\s+$"; "")) as $body | if ($body | length) > 800 then ($body[0:800] + "…") else $body end),
+    ""
+  ])) | flatten | join("\n")
+end
 ' 2>/dev/null)
 
 if [ -z "$ADDITIONAL" ]; then
@@ -127,15 +102,8 @@ if [ -z "$ADDITIONAL" ]; then
 fi
 
 # Emit JSON for the UserPromptSubmit hook contract
-python3 -c '
-import json, sys
-print(json.dumps({
-    "hookSpecificOutput": {
-        "hookEventName": "UserPromptSubmit",
-        "additionalContext": sys.argv[1],
-    },
-}))
-' "$ADDITIONAL"
+jq -nc --arg additional "$ADDITIONAL" \
+    '{hookSpecificOutput:{hookEventName:"UserPromptSubmit", additionalContext:$additional}}'
 
 # Record dedup
 (

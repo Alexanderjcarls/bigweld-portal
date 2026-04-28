@@ -69,9 +69,9 @@ async function persistAndDownload(blob: Blob, filename: string, conversationId: 
   // Server-side persistence (best-effort)
   if (conversationId) {
     try {
-      const fd = new FormData();
-      fd.append("file", blob, filename);
-      await fetch(`/api/output/${conversationId}/${filename}`, { method: "PUT", body: blob });
+      const encodedConvId = encodeURIComponent(conversationId);
+      const encodedFilename = encodeURIComponent(filename);
+      await fetch(`/api/output/${encodedConvId}/${encodedFilename}`, { method: "PUT", body: blob });
     } catch { /* swallow — local download still works */ }
   }
   // Local download

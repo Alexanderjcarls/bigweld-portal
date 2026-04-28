@@ -10,7 +10,8 @@
           },
           {
             "type": "command",
-            "command": "/datapool/bigweld-portal/.claude/hook-scripts/memory-recall.sh"
+            "command": "/datapool/bigweld-portal/.claude/hook-scripts/memory-recall.sh",
+            "async": true
           }
         ]
       }

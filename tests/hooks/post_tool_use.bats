@@ -20,15 +20,15 @@ teardown() { rm -rf "$TMPDIR"; }
 @test "appends tool_use_result event with tool + input + output" {
     echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":"a b c"}' | "$HOOK"
     line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$line" | grep -q '"type": "tool_use_result"'
-    echo "$line" | grep -q '"tool": "Bash"'
-    echo "$line" | grep -q '"output": "a b c"'
+    echo "$line" | grep -Eq '"type": ?"tool_use_result"'
+    echo "$line" | grep -Eq '"tool": ?"Bash"'
+    echo "$line" | grep -Eq '"output": ?"a b c"'
 }
 
 @test "handles missing tool_name gracefully" {
     echo '{"tool_input":{},"tool_response":""}' | "$HOOK"
     line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$line" | grep -q '"tool": "?"'
+    echo "$line" | grep -Fq '"tool":"?"'
 }
 
 @test "concurrent appends do not interleave" {

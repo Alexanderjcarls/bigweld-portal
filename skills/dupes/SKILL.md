@@ -15,10 +15,12 @@ Walk the article embedding space; pairs with cosine similarity > 0.92 are likely
 
 ```cypher
 MATCH (a1:Article), (a2:Article)
-WHERE id(a1) < id(a2)
+WHERE elementId(a1) < elementId(a2)
   AND vector.similarity.cosine(a1.embedding, a2.embedding) > 0.92
-RETURN a1.id AS id_a, a1.title AS title_a, a1.scope AS scope_a,
-       a2.id AS id_b, a2.title AS title_b, a2.scope AS scope_b,
+OPTIONAL MATCH (a1)-[:APPLIES_TO]->(s1:Scope)
+OPTIONAL MATCH (a2)-[:APPLIES_TO]->(s2:Scope)
+RETURN a1.slug AS slug_a, a1.title AS title_a, collect(DISTINCT s1.name) AS scopes_a,
+       a2.slug AS slug_b, a2.title AS title_b, collect(DISTINCT s2.name) AS scopes_b,
        vector.similarity.cosine(a1.embedding, a2.embedding) AS score
 ORDER BY score DESC
 LIMIT 30
@@ -37,7 +39,7 @@ All-pairs is O(N²) — for ~261 articles, ~34K pairs. Completes in seconds. If 
 ## Output
 
 Pairs with similarity score. For each pair, surface:
-- Both article ids + titles
+- Both article slugs + titles
 - Scopes (same scope = stronger merge candidate; different scopes = possibly cross-scope concept that should be linked, not merged)
 - Similarity score
 

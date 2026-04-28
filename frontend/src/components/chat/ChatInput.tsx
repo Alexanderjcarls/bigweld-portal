@@ -10,14 +10,12 @@ import { createConversation, uploadFile } from "@/lib/api";
 const SKILLS = ["graph", "gaps", "orphans", "rollup", "dupes", "citations", "search-past-conversations"];
 
 export function ChatInput() {
-  const {
-    conversationId,
-    setConversationId,
-    isStreaming,
-    attachFile,
-    attachedFiles,
-    clearAttachments,
-  } = useChatStore();
+  const conversationId = useChatStore(s => s.conversationId);
+  const setConversationId = useChatStore(s => s.setConversationId);
+  const isStreaming = useChatStore(s => s.isStreaming);
+  const attachFile = useChatStore(s => s.attachFile);
+  const attachedFiles = useChatStore(s => s.attachedFiles);
+  const clearAttachments = useChatStore(s => s.clearAttachments);
   const { sendTurn } = useStreamJsonChat();
   const dropRef = useRef<HTMLDivElement>(null);
   const handleSendRef = useRef<() => void>(() => {});

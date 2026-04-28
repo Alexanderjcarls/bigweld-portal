@@ -7,7 +7,7 @@
 # each session with current state.
 #
 # Caches the snapshot at /datapool/bigweld-portal/cache/kb-snapshot.md
-# with a 1-hour TTL. Soft-fails if Neo4j is down — never blocks the chat.
+# with a 5-minute TTL. Soft-fails if Neo4j is down — never blocks the chat.
 #
 # NOTE: deliberately NOT using `set -e` for the refresh path — partial
 # cypher failures should still produce a useful (partial) snapshot rather
@@ -19,7 +19,7 @@ CACHE="$CACHE_DIR/kb-snapshot.md"
 LOG_FILE="${BIGWELD_PORTAL_ROOT:-/datapool/bigweld-portal}/logs/session-start.log"
 mkdir -p "$CACHE_DIR" "$(dirname "$LOG_FILE")"
 
-CACHE_TTL=3600
+CACHE_TTL=300
 NOW=$(date +%s)
 
 # Soak the stdin payload (don't break the pipe; we don't act on it)
@@ -49,8 +49,8 @@ if [ "$AGE" -ge "$CACHE_TTL" ]; then
         # Use stale cache if any, else exit silently
         [ ! -s "$CACHE" ] && exit 0
     else
-        EDGES_DOUBLED=$(_cypher "MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS line" | head -1)
-        EDGES=$(( ${EDGES_DOUBLED:-0} / 2 ))
+        EDGES=$(_cypher "MATCH (a)-[r:RELATES_TO]->(b) WHERE elementId(a) < elementId(b) RETURN count(r) AS line" | head -1)
+        NONRECIPROCAL=$(_cypher "MATCH (a)-[:RELATES_TO]->(b) WHERE NOT (b)-[:RELATES_TO]->(a) RETURN count(*) AS line" | head -1)
 
         SCOPES=$(_cypher \
             "MATCH (a:Article)-[:APPLIES_TO]->(s:Scope) WITH s.name AS name, count(a) AS n ORDER BY n DESC RETURN '- ' + name + ': ' + toString(n) AS line")
@@ -63,7 +63,10 @@ if [ "$AGE" -ge "$CACHE_TTL" ]; then
             echo "## Bigweld substrate (live snapshot)"
             echo
             echo "- ${ARTICLES} articles"
-            echo "- ${EDGES} RELATES_TO pairs"
+            echo "- ${EDGES:-0} RELATES_TO pairs"
+            if [ "${NONRECIPROCAL:-0}" != "0" ]; then
+                echo "- ${NONRECIPROCAL} non-reciprocal RELATES_TO edges need audit"
+            fi
             echo
             if [ -n "$SCOPES" ]; then
                 echo "### By scope"
@@ -89,15 +92,8 @@ fi
 [ ! -s "$CACHE" ] && exit 0
 
 CONTENT=$(cat "$CACHE")
-python3 -c '
-import json, sys
-print(json.dumps({
-    "hookSpecificOutput": {
-        "hookEventName": "SessionStart",
-        "additionalContext": sys.argv[1],
-    },
-}))
-' "$CONTENT"
+jq -nc --arg content "$CONTENT" \
+    '{hookSpecificOutput:{hookEventName:"SessionStart", additionalContext:$content}}'
 
 echo "$(date -Iseconds) injected ${#CONTENT} chars (cache age=${AGE}s)" >> "$LOG_FILE"
 exit 0

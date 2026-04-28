@@ -11,7 +11,7 @@ export async function listConversations() {
 }
 
 export async function getConversation(id: string) {
-  const r = await fetch(`/api/conversations/${id}`);
+  const r = await fetch(`/api/conversations/${encodeURIComponent(id)}`);
   if (!r.ok) throw new Error(`getConversation: ${r.status}`);
   return r.json();
 }
@@ -20,7 +20,7 @@ export async function takeTurnStream(
   convId: string,
   message: string,
 ): Promise<Response> {
-  const r = await fetch(`/api/conversations/${convId}/turn`, {
+  const r = await fetch(`/api/conversations/${encodeURIComponent(convId)}/turn`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),

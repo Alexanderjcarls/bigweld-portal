@@ -1,9 +1,10 @@
 """Output and budget endpoint smoke tests."""
 import pytest
 
+from backend.api import output as output_api
 from backend.core.conversation_store import ConversationStore
 
-AUTH = {"Cf-Access-Authenticated-User-Email": "alexanderjcarlson@gmail.com"}
+AUTH = {"Cf-Access-Jwt-Assertion": "valid-test-jwt"}
 
 
 @pytest.fixture(autouse=True)
@@ -166,3 +167,15 @@ async def test_output_allows_substring_dot_dot(client):
     get = await client.get("/api/output/test/v1..2.svg", headers=AUTH)
     assert get.status_code == 200
     assert get.content == content
+
+
+async def test_output_rejects_body_over_limit(client, monkeypatch):
+    monkeypatch.setattr(output_api, "MAX_OUTPUT_BYTES", 3)
+
+    r = await client.put(
+        "/api/output/test/too-big.svg",
+        headers=AUTH,
+        content=b"abcd",
+    )
+
+    assert r.status_code == 413

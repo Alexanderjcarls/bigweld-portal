@@ -1,11 +1,12 @@
 import { motion } from "motion/react";
 import { Streamdown } from "streamdown";
+import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import type { MessageBlock } from "@/types/conversation";
 
 export function Message({ id }: { id: string }) {
-  const message = useChatStore(s => s.messages.find(m => m.id === id));
+  const message = useChatStore(useShallow(s => s.messages.find(m => m.id === id)));
   if (!message) return null;
   const lastTextBlockIndex = findLastTextBlockIndex(message.blocks);
 

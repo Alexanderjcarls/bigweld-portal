@@ -20,10 +20,8 @@ export function useFenceDetector(): void {
 
   useEffect(() => {
     if (!lastAssistantContent) return;
-    let lastMatch: RegExpExecArray | null = null;
-    FENCE_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = FENCE_RE.exec(lastAssistantContent)) !== null) lastMatch = m;
+    const matches = Array.from(lastAssistantContent.matchAll(FENCE_RE));
+    const lastMatch = matches.at(-1);
     if (!lastMatch) return;
     const [, kind, source] = lastMatch;
     if (kind === "mermaid") setSource("mermaid", source.trim());

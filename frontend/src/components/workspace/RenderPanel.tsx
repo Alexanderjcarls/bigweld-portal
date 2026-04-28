@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { renderMermaid } from "@/lib/mermaidRender";
 
@@ -54,12 +55,18 @@ export function RenderPanel() {
     );
   }
 
+  const sanitizedSvg = current.rendered_svg
+    ? DOMPurify.sanitize(current.rendered_svg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+    })
+    : null;
+
   return (
     <div className="h-full overflow-auto p-6 relative bg-background">
-      {current.rendered_svg ? (
+      {sanitizedSvg ? (
         <div
           className="w-full"
-          dangerouslySetInnerHTML={{ __html: current.rendered_svg }}
+          dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
         />
       ) : current.error ? (
         <div className="text-destructive font-sans">

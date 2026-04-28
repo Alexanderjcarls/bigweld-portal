@@ -1,7 +1,9 @@
 """Input upload endpoint tests."""
 import pytest
 
-AUTH = {"Cf-Access-Authenticated-User-Email": "alexanderjcarlson@gmail.com"}
+from backend.api import upload as upload_api
+
+AUTH = {"Cf-Access-Jwt-Assertion": "valid-test-jwt"}
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +74,34 @@ async def test_upload_empty_body_creates_file(client, tmp_path):
     }
     assert target.exists()
     assert target.read_bytes() == b""
+
+
+async def test_upload_rejects_body_over_limit(client, monkeypatch):
+    monkeypatch.setattr(upload_api, "MAX_UPLOAD_BYTES", 3)
+
+    r = await client.put(
+        "/api/upload/test/too-big.bin",
+        headers=AUTH,
+        content=b"abcd",
+    )
+
+    assert r.status_code == 413
+
+
+async def test_upload_rejects_stream_over_limit_without_content_length(client, monkeypatch):
+    monkeypatch.setattr(upload_api, "MAX_UPLOAD_BYTES", 3)
+
+    async def chunks():
+        yield b"ab"
+        yield b"cd"
+
+    r = await client.put(
+        "/api/upload/test/too-big-stream.bin",
+        headers=AUTH,
+        content=chunks(),
+    )
+
+    assert r.status_code == 413
 
 
 async def test_upload_requires_auth(client):

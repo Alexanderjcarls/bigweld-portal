@@ -2,7 +2,7 @@
 
 Mirrors the Aegis V2 provider order for output-light summarization work.
 Secrets are read from /aegis/.env through python-dotenv, with the process
-environment available as a fallback for tests and local overrides.
+environment taking precedence for tests and local overrides.
 """
 import logging
 import os
@@ -36,9 +36,10 @@ TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 def _read_keys() -> dict[str, str]:
-    values = dict(os.environ)
+    values = {}
     if AEGIS_ENV.exists():
         values.update({k: v for k, v in dotenv_values(AEGIS_ENV).items() if v is not None})
+    values.update(os.environ)
     return values
 
 

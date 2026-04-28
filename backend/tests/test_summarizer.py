@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from backend.core.conversation_store import ConversationStore
-from backend.core.summarizer import summarize_conversation, sweep_idle_conversations
+from backend.core.summarizer import _build_transcript, summarize_conversation, sweep_idle_conversations
 
 
 async def _seed_old_conv(store, hours_old=25, with_content=True):
@@ -45,3 +45,11 @@ async def test_sweep_finds_only_idle_conversations(tmp_path, monkeypatch):
     assert n == 1
     assert store.summary_path_for(old).exists()
     assert not store.summary_path_for(fresh).exists()
+
+
+def test_tool_output_truncation_is_marked():
+    transcript = _build_transcript([
+        {"type": "tool_use_result", "tool": "search", "output": "x" * 501},
+    ])
+
+    assert transcript.endswith("…")

@@ -15,7 +15,7 @@ interface ChatState {
   isStreaming: boolean;
 
   setConversationId: (id: string | null) => void;
-  loadMessages: (msgs: Message[]) => void;
+  loadMessages: (msgs: Message[], expectedConvId?: string | null) => void;
   startUserTurn: (content: string) => string;
   beginAssistantBlock: (msgId: string, block: MessageBlock) => void;
   appendToCurrentTextBlock: (msgId: string, delta: string) => void;
@@ -62,9 +62,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       /* localStorage unavailable */
     }
   },
-  loadMessages: (msgs) => {
-    toolInputBuffers.clear();
-    set({ messages: msgs });
+  loadMessages: (msgs, expectedConvId) => {
+    set((state) => {
+      if (state.messages.length > 0) return {};
+      if (expectedConvId && state.conversationId !== expectedConvId) return {};
+      toolInputBuffers.clear();
+      return { messages: msgs };
+    });
   },
   startUserTurn: (content) => {
     const userMsg: Message = {

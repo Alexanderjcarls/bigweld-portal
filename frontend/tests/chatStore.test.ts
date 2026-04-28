@@ -50,4 +50,27 @@ describe("chatStore block accumulators", () => {
       isStreaming: false,
     });
   });
+
+  it("loadMessages ignores stale hydration after an active turn starts", async () => {
+    useChatStore.getState().setConversationId("conv-a");
+    const hydration = Promise.resolve([
+      {
+        id: "old-msg",
+        role: "user" as const,
+        blocks: [{ kind: "text" as const, text: "old" }],
+        ts: new Date().toISOString(),
+        isStreaming: false,
+      },
+    ]).then(messages => {
+      useChatStore.getState().loadMessages(messages, "conv-a");
+    });
+
+    useChatStore.getState().setConversationId("conv-b");
+    useChatStore.getState().startUserTurn("new turn");
+    await hydration;
+
+    expect(useChatStore.getState().messages[0].blocks).toEqual([
+      { kind: "text", text: "new turn" },
+    ]);
+  });
 });

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from backend.auth import require_cf_access_email
+from backend.core.config import MAX_OUTPUT_BYTES
+from backend.core.request_body import read_limited_body
 
 router = APIRouter(prefix="/api/output", dependencies=[Depends(require_cf_access_email)])
 
@@ -28,7 +30,7 @@ def _output_path(conv_id: str, filename: str) -> Path:
 async def upload_output(conv_id: str, filename: str, request: Request):
     target = _output_path(conv_id, filename)
     target.parent.mkdir(parents=True, exist_ok=True)
-    content = await request.body()
+    content = await read_limited_body(request, MAX_OUTPUT_BYTES)
     target.write_bytes(content)
     return {"ok": True, "path": str(target.resolve()), "bytes": len(content)}
 

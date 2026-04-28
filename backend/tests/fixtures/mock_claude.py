@@ -12,6 +12,7 @@ or:    python mock_claude.py -p '<prompt>' --resume <uuid> ...
 import argparse
 import json
 import os
+from pathlib import Path
 import select
 import sys
 import time
@@ -57,6 +58,13 @@ def main() -> int:
     if mode == "hang":
         time.sleep(600)  # block forever; test should kill us
         return 0
+    if mode == "rate_limit" and args.resume:
+        once_file = os.environ.get("MOCK_CLAUDE_RATE_LIMIT_ONCE_FILE")
+        if once_file and not Path(once_file).exists():
+            Path(once_file).write_text("seen")
+            emit({"type": "system", "subtype": "rate_limit",
+                  "error": "rate limited", "is_error": True})
+            return 1
     emit_stdin_received_if_requested()
     if mode == "rate_limit":
         emit({"type": "system", "subtype": "api_retry",

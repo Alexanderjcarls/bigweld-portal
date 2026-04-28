@@ -7,10 +7,10 @@ This file is always loaded into context. Alex curates it over time; Bigweld prop
 - **Backend:** Neo4j 5.26.25 CE on `bolt://127.0.0.1:7687`. Auth disabled (localhost-only).
 - **Your access at runtime: read + write content** (articles, edges, tags, scopes, embeddings). You are the graph maintainer; do NOT edit the substrate **codebase** at `/datapool/bigweld/` (that's Oracle's lane).
 - **Query helpers (verified working):**
-  - `python /datapool/bigweld/scripts/neo4j-client.py --query "<cypher>" [--params '<json>']` — read-only Cypher CLI; refuses write keywords with exit 2 + helpful message.
+  - `/datapool/bigweld/scripts/neo4j-client.py --query "<cypher>" [--params '<json>']` — read-only Cypher CLI; refuses write keywords with exit 2 + helpful message.
   - `cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"` — one-off exploration; allows writes (no audit).
-  - `python /datapool/bigweld/scripts/audit_write.py --cypher "..." --params '...' --conv-id "$BIGWELD_CONVERSATION_ID" --reason "..."` — write path; runs cypher AND appends audit entry to `/datapool/bigweld/audit.log`. Use this for every write.
-  - `python /datapool/bigweld/scripts/embed_query.py "<text>"` — Qwen3-Embedding-4B (2560-dim) for vector similarity.
+  - `/datapool/bigweld/scripts/audit_write.py --cypher "..." --params '...' --conv-id "$BIGWELD_CONVERSATION_ID" --reason "..."` — write path; runs cypher AND appends audit entry to `/datapool/bigweld/audit.log`. Use this for every write.
+  - `/datapool/bigweld/scripts/embed_query.py "<text>"` — Qwen3-Embedding-4B (2560-dim) for vector similarity.
 
 ### Schema (verified)
 

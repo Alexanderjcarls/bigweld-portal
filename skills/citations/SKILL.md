@@ -19,15 +19,18 @@ Strategy: embedding-anchor + graph-walk + frequency rank.
    ```cypher
    CALL db.index.vector.queryNodes('article_embedding', 5, $query_vector)
    YIELD node, score
-   RETURN node.id, score
+   RETURN node.slug AS slug, score
    ```
 3. **Walk depth 2 from anchors:**
    ```cypher
    MATCH (anchor:Article)-[:RELATES_TO*1..2]-(neighbor:Article)
-   WHERE anchor.id IN $anchor_ids
-   WITH neighbor, count(DISTINCT anchor) AS anchor_overlap, collect(DISTINCT anchor.id) AS via_anchors
-   RETURN neighbor.id, neighbor.title, neighbor.summary,
-          neighbor.scope, anchor_overlap, via_anchors
+   WHERE anchor.slug IN $anchor_slugs
+   OPTIONAL MATCH (neighbor)-[:APPLIES_TO]->(scope:Scope)
+   WITH neighbor, count(DISTINCT anchor) AS anchor_overlap,
+        collect(DISTINCT anchor.slug) AS via_anchors,
+        collect(DISTINCT scope.name) AS scopes
+   RETURN neighbor.slug AS slug, neighbor.title AS title, neighbor.summary AS summary,
+          scopes, anchor_overlap, via_anchors
    ORDER BY anchor_overlap DESC
    LIMIT 10
    ```
@@ -43,16 +46,16 @@ Then run anchor lookup + neighborhood walk:
 ```bash
 /datapool/bigweld/scripts/neo4j-client.py \
   --query "<step 2 cypher>" --params "{\"query_vector\":$VECTOR}"
-# capture anchor ids, then:
+# capture anchor slugs, then:
 /datapool/bigweld/scripts/neo4j-client.py \
-  --query "<step 3 cypher>" --params "{\"anchor_ids\":[\"id1\",\"id2\",...]}"
+  --query "<step 3 cypher>" --params "{\"anchor_slugs\":[\"slug1\",\"slug2\",...]}"
 ```
 
 ## Output
 
 Top-10 articles by `anchor_overlap` (how many of the 5 anchors traversed to it). Citation cards with:
-- Title + id
-- Scope tag
+- Title + slug
+- Scope names
 - 1-line summary
 - "via N of 5 anchors" badge — higher = more central to the topic
 

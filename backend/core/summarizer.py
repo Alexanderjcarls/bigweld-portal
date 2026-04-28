@@ -51,7 +51,10 @@ def _build_transcript(events: list[dict[str, Any]]) -> str:
         elif event_type in {"tool_use_result", "tool_result"}:
             tool = event.get("tool") or event.get("name") or "?"
             output = event.get("output") or _event_content(event)
-            transcript_lines.append(f"[TOOL {tool}]: {str(output)[:500]}")
+            output_text = str(output)
+            if len(output_text) > 500:
+                output_text = output_text[:500] + "…"
+            transcript_lines.append(f"[TOOL {tool}]: {output_text}")
     return "\n".join(line for line in transcript_lines if line.strip())
 
 

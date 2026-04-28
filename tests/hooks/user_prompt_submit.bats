@@ -29,10 +29,10 @@ teardown() {
     echo '{"prompt":"hello bigweld"}' | "$HOOK"
     [ -f "$BIGWELD_CONVERSATION_FILE" ]
     last_line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$last_line" | grep -q '"type": "user"'
-    echo "$last_line" | grep -q '"content": "hello bigweld"'
-    echo "$last_line" | grep -q '"conv_id": "test-conv-id"'
-    echo "$last_line" | grep -q '"ts":'
+    echo "$last_line" | grep -Eq '"type": ?"user"'
+    echo "$last_line" | grep -Eq '"content": ?"hello bigweld"'
+    echo "$last_line" | grep -Eq '"conv_id": ?"test-conv-id"'
+    echo "$last_line" | grep -Eq '"ts":'
 }
 
 @test "concurrent appends do not interleave" {

@@ -26,6 +26,16 @@ def _set_key(monkeypatch, provider: dict[str, str], value: str = "test-key") -> 
     monkeypatch.setenv(provider["key_env"], value)
 
 
+def test_process_env_wins_over_dotenv(monkeypatch, tmp_path):
+    primary = llm_router.PROVIDERS[0]
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{primary['key_env']}=dotenv-key\n")
+    monkeypatch.setattr(llm_router, "AEGIS_ENV", env_file)
+    monkeypatch.setenv(primary["key_env"], "process-key")
+
+    assert llm_router._read_keys()[primary["key_env"]] == "process-key"
+
+
 async def test_primary_success_no_fallback(httpx_mock, monkeypatch):
     primary = llm_router.PROVIDERS[0]
     secondary = llm_router.PROVIDERS[1]

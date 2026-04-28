@@ -1,5 +1,6 @@
 """Render endpoints: server-side fallback when client rendering is unavailable."""
-AUTH = {"Cf-Access-Authenticated-User-Email": "alexanderjcarlson@gmail.com"}
+
+AUTH = {"Cf-Access-Jwt-Assertion": "valid-test-jwt"}
 
 
 async def test_kroki_render_proxies_to_kroki(client, httpx_mock):

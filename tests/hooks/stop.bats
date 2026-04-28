@@ -23,15 +23,15 @@ teardown() { rm -rf "$TMPDIR"; }
 @test "appends assistant event from Claude Code Stop last_assistant_message" {
     "$HOOK" < "$FIXTURE"
     line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$line" | grep -q '"type": "assistant"'
-    echo "$line" | grep -q '"content": "the answer"'
+    echo "$line" | grep -Eq '"type": ?"assistant"'
+    echo "$line" | grep -Eq '"content": ?"the answer"'
 }
 
 @test "appends assistant event from legacy message content blocks" {
     echo '{"message":{"role":"assistant","content":[{"type":"text","text":"legacy answer"}]}}' | "$HOOK"
     line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$line" | grep -q '"type": "assistant"'
-    echo "$line" | grep -q '"content": "legacy answer"'
+    echo "$line" | grep -Eq '"type": ?"assistant"'
+    echo "$line" | grep -Eq '"content": ?"legacy answer"'
 }
 
 @test "falls back to latest text-bearing assistant transcript entry" {
@@ -42,8 +42,8 @@ teardown() { rm -rf "$TMPDIR"; }
     } > "$transcript"
     printf '{"transcript_path":"%s","stop_hook_active":false}\n' "$transcript" | "$HOOK"
     line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$line" | grep -q '"type": "assistant"'
-    echo "$line" | grep -q '"content": "transcript answer"'
+    echo "$line" | grep -Eq '"type": ?"assistant"'
+    echo "$line" | grep -Eq '"content": ?"transcript answer"'
 }
 
 @test "stop_hook_active=true triggers no-op (prevents infinite loop)" {
@@ -61,5 +61,5 @@ teardown() { rm -rf "$TMPDIR"; }
     echo '{}' | "$HOOK"
     [ -f "$BIGWELD_CONVERSATION_FILE" ]
     line=$(tail -1 "$BIGWELD_CONVERSATION_FILE")
-    echo "$line" | grep -q '"type": "assistant"'
+    echo "$line" | grep -Eq '"type": ?"assistant"'
 }

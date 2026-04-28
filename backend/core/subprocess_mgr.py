@@ -5,7 +5,7 @@ context persists via Claude's `--resume <session-uuid>` against its own session
 storage. We mirror to our own JSONL via hooks.
 
 Defensive fallback: if --resume errors (corrupt session, version skew), we
-respawn with a fresh --session-id and pipe the prior transcript via stdin.
+respawn with a fresh --session-id and embed the prior transcript in the prompt.
 
 Critical subprocess details:
 1. Always re-raise CancelledError so disconnects propagate.
@@ -28,6 +28,16 @@ from backend.metrics import resume_failure_total, subprocess_startup_seconds
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_ENV_KEYS = {"PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "TZ"}
+TEST_ENV_KEYS = {
+    "MOCK_CLAUDE_MODE",
+    "MOCK_CLAUDE_DELAY_MS",
+    "MOCK_CLAUDE_PROMPT_FILE",
+    "MOCK_CLAUDE_ECHO_STDIN",
+    "MOCK_CLAUDE_RATE_LIMIT_ONCE_FILE",
+}
+PERMANENT_RESUME_ERROR_CODES = {"session_not_found", "corrupt_session"}
+
 
 @dataclass
 class ManagedProc:
@@ -40,6 +50,8 @@ class ManagedProc:
     _startup_observed: bool = False
     _stderr_task: asyncio.Task[None] | None = None
     _killed: bool = False
+    received_result: bool = False
+    emitted_error: bool = False
     _parser: LineBufferedParser = field(default_factory=LineBufferedParser)
     _replay_events: list[StreamJsonEvent] = field(default_factory=list)
 
@@ -67,16 +79,28 @@ class SubprocessManager:
         self,
         claude_command: list[str] | None = None,
         per_turn_timeout_s: int = 300,
+        resume_retry_backoff_s: float = 0.2,
     ) -> None:
         self._claude_command = claude_command or ["claude"]
         self._per_turn_timeout_s = per_turn_timeout_s
+        self._resume_retry_backoff_s = resume_retry_backoff_s
 
     def _build_env(self, conversation_id: str, conversation_file: Path) -> dict[str, str]:
-        env = os.environ.copy()
-        env["ANTHROPIC_API_KEY"] = ""
-        env["BIGWELD_CONVERSATION_ID"] = conversation_id
-        env["BIGWELD_CONVERSATION_FILE"] = str(conversation_file)
-        env["BIGWELD_BACKEND_ASSISTANT_BLOCKS"] = "1"
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key in ALLOWED_ENV_KEYS or key in TEST_ENV_KEYS
+        }
+        env.update({
+            "ANTHROPIC_API_KEY": "",
+            "BIGWELD_PORTAL_ROOT": os.environ.get(
+                "BIGWELD_PORTAL_ROOT",
+                "/datapool/bigweld-portal",
+            ),
+            "BIGWELD_CONVERSATION_ID": conversation_id,
+            "BIGWELD_CONVERSATION_FILE": str(conversation_file),
+            "BIGWELD_BACKEND_ASSISTANT_BLOCKS": "1",
+        })
         return env
 
     def _build_args(self, prompt: str, session_uuid: str, is_resume: bool) -> list[str]:
@@ -98,7 +122,6 @@ class SubprocessManager:
         is_resume: bool,
         conversation_id: str,
         conversation_file: Path,
-        stdin_data: bytes | None = None,
     ) -> ManagedProc:
         env = self._build_env(conversation_id, conversation_file)
         args = self._build_args(prompt, session_uuid, is_resume)
@@ -106,31 +129,16 @@ class SubprocessManager:
         proc = await asyncio.create_subprocess_exec(
             *self._claude_command,
             *args,
-            stdin=asyncio.subprocess.PIPE if stdin_data is not None else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
         managed = ManagedProc(
             proc=proc,
-            env_seen={
-                "ANTHROPIC_API_KEY": env["ANTHROPIC_API_KEY"],
-                "BIGWELD_CONVERSATION_ID": env["BIGWELD_CONVERSATION_ID"],
-                "BIGWELD_CONVERSATION_FILE": env["BIGWELD_CONVERSATION_FILE"],
-                "BIGWELD_BACKEND_ASSISTANT_BLOCKS": env["BIGWELD_BACKEND_ASSISTANT_BLOCKS"],
-            },
+            env_seen=dict(env),
             startup_started_at=startup_started_at,
         )
         managed._stderr_task = asyncio.create_task(self._drain_stderr(managed))
-        if stdin_data is not None:
-            assert proc.stdin is not None
-            try:
-                if stdin_data:
-                    proc.stdin.write(stdin_data)
-                    await proc.stdin.drain()
-                proc.stdin.close()
-            except (BrokenPipeError, ConnectionResetError):
-                pass
         return managed
 
     async def _drain_stderr(self, managed: ManagedProc) -> None:
@@ -150,6 +158,7 @@ class SubprocessManager:
         try:
             while managed._replay_events:
                 event = managed._replay_events.pop(0)
+                self._record_event(managed, event)
                 yield event
                 if is_terminal(event):
                     completed = True
@@ -159,10 +168,15 @@ class SubprocessManager:
             while True:
                 events, stream_closed = await self._read_stdout_events(managed)
                 if not events and stream_closed:
+                    error = await self._missing_result_error(managed)
+                    if error is not None:
+                        self._record_event(managed, error)
+                        yield error
                     completed = True
                     return
 
                 for event in events:
+                    self._record_event(managed, event)
                     yield event
                     if is_terminal(event):
                         completed = True
@@ -170,6 +184,10 @@ class SubprocessManager:
                         return
 
                 if stream_closed:
+                    error = await self._missing_result_error(managed)
+                    if error is not None:
+                        self._record_event(managed, error)
+                        yield error
                     completed = True
                     return
         except asyncio.CancelledError:
@@ -227,6 +245,25 @@ class SubprocessManager:
         managed._startup_observed = True
         subprocess_startup_seconds.observe(time.perf_counter() - managed.startup_started_at)
 
+    @staticmethod
+    def _record_event(managed: ManagedProc, event: StreamJsonEvent) -> None:
+        if event.get("type") == "result":
+            managed.received_result = True
+        if event.get("is_error"):
+            managed.emitted_error = True
+
+    @staticmethod
+    async def _missing_result_error(managed: ManagedProc) -> StreamJsonEvent | None:
+        await managed.wait_closed()
+        if managed.received_result or managed.emitted_error:
+            return None
+        return {
+            "type": "system",
+            "subtype": "error",
+            "is_error": True,
+            "error": f"subprocess exited rc={managed.returncode} before result",
+        }
+
     async def _read_next_event(self, managed: ManagedProc) -> StreamJsonEvent | None:
         if managed._replay_events:
             return managed._replay_events.pop(0)
@@ -267,7 +304,7 @@ class SubprocessManager:
         conversation_id: str,
         conversation_file: Path,
     ) -> SpawnResult:
-        """Spawn a turn, retrying --resume errors with a fresh session."""
+        """Spawn a turn, retrying transient --resume errors before fallback."""
         managed = await self.spawn_turn(
             prompt=prompt,
             session_uuid=session_uuid,
@@ -278,24 +315,33 @@ class SubprocessManager:
         first_event = await self._read_next_event(managed)
 
         if is_resume and first_event is not None and first_event.get("is_error"):
-            await managed.wait_closed()
-            transcript = self._read_transcript(conversation_file)
-            stdin_data = conversation_file.read_bytes() if conversation_file.exists() else b""
-            new_uuid = str(uuid.uuid4())
-            full_prompt = self._assemble_fallback_prompt(transcript, prompt)
-            resume_failure_total.inc()
-            fallback_managed = await self.spawn_turn(
-                prompt=full_prompt,
-                session_uuid=new_uuid,
-                is_resume=False,
+            if not self._is_permanent_resume_error(first_event):
+                await managed.wait_closed()
+                await asyncio.sleep(self._resume_retry_backoff_s)
+                retry_managed = await self.spawn_turn(
+                    prompt=prompt,
+                    session_uuid=session_uuid,
+                    is_resume=True,
+                    conversation_id=conversation_id,
+                    conversation_file=conversation_file,
+                )
+                retry_first_event = await self._read_next_event(retry_managed)
+                if retry_first_event is None or not retry_first_event.get("is_error"):
+                    if retry_first_event is not None:
+                        retry_managed._replay_events.insert(0, retry_first_event)
+                    return SpawnResult(
+                        proc=retry_managed,
+                        new_session_uuid=session_uuid,
+                        fallback_used=False,
+                    )
+                await retry_managed.wait_closed()
+            else:
+                await managed.wait_closed()
+
+            return await self._spawn_fallback(
+                prompt=prompt,
                 conversation_id=conversation_id,
                 conversation_file=conversation_file,
-                stdin_data=stdin_data,
-            )
-            return SpawnResult(
-                proc=fallback_managed,
-                new_session_uuid=new_uuid,
-                fallback_used=True,
             )
 
         if first_event is not None:
@@ -304,6 +350,38 @@ class SubprocessManager:
             proc=managed,
             new_session_uuid=session_uuid,
             fallback_used=False,
+        )
+
+    async def _spawn_fallback(
+        self,
+        *,
+        prompt: str,
+        conversation_id: str,
+        conversation_file: Path,
+    ) -> SpawnResult:
+        transcript = self._read_transcript(conversation_file)
+        new_uuid = str(uuid.uuid4())
+        full_prompt = self._assemble_fallback_prompt(transcript, prompt)
+        resume_failure_total.inc()
+        fallback_managed = await self.spawn_turn(
+            prompt=full_prompt,
+            session_uuid=new_uuid,
+            is_resume=False,
+            conversation_id=conversation_id,
+            conversation_file=conversation_file,
+        )
+        return SpawnResult(
+            proc=fallback_managed,
+            new_session_uuid=new_uuid,
+            fallback_used=True,
+        )
+
+    @staticmethod
+    def _is_permanent_resume_error(event: StreamJsonEvent) -> bool:
+        subtype = str(event.get("subtype", "")).lower()
+        error = str(event.get("error", "")).lower().replace(" ", "_")
+        return subtype in PERMANENT_RESUME_ERROR_CODES or any(
+            code in error for code in PERMANENT_RESUME_ERROR_CODES
         )
 
     @staticmethod
@@ -330,7 +408,29 @@ class SubprocessManager:
             if event_type == "user":
                 lines.append(f"User: {event.get('content', '')}")
             elif event_type == "assistant":
-                lines.append(f"Assistant: {event.get('content', '')}")
+                rendered = SubprocessManager._render_assistant_event(event)
+                if rendered:
+                    lines.append(f"Assistant: {rendered}")
+            elif event_type == "tool_use_result":
+                tool = event.get("tool") or event.get("name") or "?"
+                output = str(event.get("output", ""))[:300]
+                lines.append(f"[Tool {tool}: {output}]")
         lines.append("\n### Current turn")
         lines.append(current)
         return "\n".join(lines)
+
+    @staticmethod
+    def _render_assistant_event(event: dict) -> str:
+        blocks = event.get("blocks")
+        if isinstance(blocks, list):
+            rendered: list[str] = []
+            for block in blocks:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("kind") == "text" and isinstance(block.get("text"), str):
+                    rendered.append(block["text"])
+                elif block.get("kind") == "tool_use":
+                    rendered.append(f"[ran tool: {block.get('name', 'tool')}]")
+            return "\n".join(item for item in rendered if item)
+        content = event.get("content")
+        return content if isinstance(content, str) else ""

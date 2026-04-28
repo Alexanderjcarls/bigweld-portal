@@ -50,7 +50,6 @@ class EventsResponse(BaseModel):
 
 class TurnRequest(BaseModel):
     message: str
-    attachments: list[dict] | None = None
 
 
 async def _run_lazy_summarize(store: ConversationStore, conv_id: str) -> None:
@@ -127,6 +126,7 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
 
     async def stream() -> AsyncIterator[bytes]:
         started_at = time.perf_counter()
+        turn_status = "ok"
         assistant_blocks = AssistantBlockCollector()
         assistant_blocks_written = False
         usage_written = False
@@ -150,6 +150,8 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
                 store.set_session_uuid(conv_id, result.new_session_uuid)
 
             async for ev in _subprocess_mgr.stream_events(result.proc):
+                if ev.get("is_error"):
+                    turn_status = "error"
                 assistant_blocks.ingest(ev)
                 if ev.get("type") == "result":
                     usage = ev.get("usage")
@@ -183,7 +185,7 @@ async def take_turn(conv_id: str, body: TurnRequest) -> StreamingResponse:
             }
             yield (json.dumps(err) + "\n").encode("utf-8")
         else:
-            turn_total.labels(status="ok").inc()
+            turn_total.labels(status=turn_status).inc()
             turn_duration_seconds.observe(time.perf_counter() - started_at)
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")

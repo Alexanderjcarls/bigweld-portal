@@ -7,21 +7,14 @@ set -euo pipefail
 [ -z "${BIGWELD_CONVERSATION_FILE:-}" ] && exit 0
 
 INPUT=$(cat)
-PROMPT=$(printf '%s' "$INPUT" | python3 -c 'import json,sys
-try:
-    d=json.load(sys.stdin)
-    print(d.get("prompt",""))
-except Exception:
-    print("")
-' 2>/dev/null || echo "")
+PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' 2>/dev/null || echo "")
 TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%6NZ")
 
-EVENT=$(python3 -c "import json,sys; print(json.dumps({
-    'type':'user',
-    'content': sys.argv[1],
-    'ts': sys.argv[2],
-    'conv_id': sys.argv[3],
-}))" "$PROMPT" "$TS" "$BIGWELD_CONVERSATION_ID")
+EVENT=$(jq -nc \
+    --arg content "$PROMPT" \
+    --arg ts "$TS" \
+    --arg conv_id "$BIGWELD_CONVERSATION_ID" \
+    '{type:"user", content:$content, ts:$ts, conv_id:$conv_id}')
 
 (
     flock -x 200

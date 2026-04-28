@@ -6,11 +6,16 @@ import { ndjsonReader } from "@/lib/ndjson";
 import type { ContentBlock, StreamJsonEvent } from "@/types/stream";
 
 export function useStreamJsonChat() {
-  const {
-    conversationId, setConversationId, startUserTurn,
-    beginAssistantBlock, appendToCurrentTextBlock, appendToCurrentThinkingBlock,
-    appendToolUseInput, finalizeToolUse, finalizeAssistantTurn, setStreaming,
-  } = useChatStore();
+  const conversationId = useChatStore(s => s.conversationId);
+  const setConversationId = useChatStore(s => s.setConversationId);
+  const startUserTurn = useChatStore(s => s.startUserTurn);
+  const beginAssistantBlock = useChatStore(s => s.beginAssistantBlock);
+  const appendToCurrentTextBlock = useChatStore(s => s.appendToCurrentTextBlock);
+  const appendToCurrentThinkingBlock = useChatStore(s => s.appendToCurrentThinkingBlock);
+  const appendToolUseInput = useChatStore(s => s.appendToolUseInput);
+  const finalizeToolUse = useChatStore(s => s.finalizeToolUse);
+  const finalizeAssistantTurn = useChatStore(s => s.finalizeAssistantTurn);
+  const setStreaming = useChatStore(s => s.setStreaming);
   const setLastFailedMessage = useResumeStore(s => s.setLastFailedMessage);
 
   const sendTurn = useCallback(async (message: string) => {

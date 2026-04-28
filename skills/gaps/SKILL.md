@@ -16,12 +16,13 @@ When invoked with a scope name: walk inside that scope only, surface its low-den
 ## Cypher (no-arg variant)
 
 ```cypher
-MATCH (s:Scope)<-[:IN_SCOPE]-(a:Article)
-WITH s, count(a) AS articles
-OPTIONAL MATCH (a2:Article)-[:IN_SCOPE]->(s)-[:RELATES_TO]-(other:Article)
-WITH s.name AS scope, articles, count(DISTINCT other) AS edges
-RETURN scope, articles, edges,
-       (toFloat(edges) / articles) AS density
+MATCH (s:Scope)<-[:APPLIES_TO]-(a:Article)
+WITH s, collect(a) AS scoped_articles, count(a) AS article_count
+UNWIND scoped_articles AS scoped_article
+OPTIONAL MATCH (scoped_article)-[:RELATES_TO]-(other:Article)
+WITH s.name AS scope, article_count, count(DISTINCT other) AS edges
+RETURN scope, article_count AS articles, edges,
+       (toFloat(edges) / article_count) AS density
 ORDER BY density ASC
 LIMIT 10
 ```
@@ -29,12 +30,12 @@ LIMIT 10
 ## Cypher (scoped variant — `/gaps storage-support`)
 
 ```cypher
-MATCH (s:Scope {name: $scope})<-[:IN_SCOPE]-(a:Article)
+MATCH (s:Scope {name: $scope})<-[:APPLIES_TO]-(a:Article)
 WITH a
 OPTIONAL MATCH (a)-[:RELATES_TO]-(other:Article)
 WITH a, count(DISTINCT other) AS edge_count
 WHERE edge_count < 2
-RETURN a.id, a.title, a.summary, edge_count
+RETURN a.slug AS slug, a.title AS title, a.summary AS summary, edge_count
 ORDER BY edge_count ASC
 LIMIT 20
 ```

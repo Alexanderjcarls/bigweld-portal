@@ -9,23 +9,14 @@ set -euo pipefail
 INPUT=$(cat)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%S.%6NZ")
 
-EVENT=$(printf '%s' "$INPUT" | python3 -c "
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    d = {}
-ts = sys.argv[1]
-conv = sys.argv[2]
-print(json.dumps({
-    'type': 'tool_use_result',
-    'tool': d.get('tool_name', '?'),
-    'input': d.get('tool_input', {}),
-    'output': d.get('tool_response', ''),
-    'ts': ts,
-    'conv_id': conv,
-}))
-" "$TS" "$BIGWELD_CONVERSATION_ID")
+EVENT=$(printf '%s' "$INPUT" | jq -c \
+    --arg ts "$TS" \
+    --arg conv_id "$BIGWELD_CONVERSATION_ID" \
+    '{type:"tool_use_result", tool:(.tool_name // "?"), input:(.tool_input // {}), output:(.tool_response // ""), ts:$ts, conv_id:$conv_id}' \
+    2>/dev/null || jq -nc \
+    --arg ts "$TS" \
+    --arg conv_id "$BIGWELD_CONVERSATION_ID" \
+    '{type:"tool_use_result", tool:"?", input:{}, output:"", ts:$ts, conv_id:$conv_id}')
 
 (
     flock -x 200

@@ -2,15 +2,21 @@
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
+from backend.api import conversations
 from backend.core.config import SUMMARIZE_IDLE_THRESHOLD_S
 from backend.core.conversation_store import ConversationStore
+from backend.core.subprocess_mgr import SubprocessManager
+from backend.metrics import turn_total
 
-AUTH = {"Cf-Access-Authenticated-User-Email": "alexanderjcarlson@gmail.com"}
+MOCK_CLAUDE = os.path.join(os.path.dirname(__file__), "fixtures", "mock_claude.py")
+
+AUTH = {"Cf-Access-Jwt-Assertion": "valid-test-jwt"}
 
 
 @pytest.fixture(autouse=True)
@@ -87,3 +93,31 @@ async def test_get_by_id_404_for_unknown(client):
         headers=AUTH,
     )
     assert r.status_code == 404
+
+
+async def test_turn_crash_streams_error_and_counts_error(client, monkeypatch):
+    monkeypatch.setenv("MOCK_CLAUDE_MODE", "crash")
+    mgr = SubprocessManager(
+        claude_command=[sys.executable, MOCK_CLAUDE],
+        per_turn_timeout_s=10,
+    )
+    monkeypatch.setattr(conversations, "_subprocess_mgr", mgr)
+    before = turn_total.labels(status="error")._value.get()
+
+    created = await client.post("/api/conversations", headers=AUTH)
+    conv_id = created.json()["conv_id"]
+    response = await client.post(
+        f"/api/conversations/{conv_id}/turn",
+        headers=AUTH,
+        json={"message": "crash now"},
+    )
+
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert response.status_code == 200
+    assert events[-1] == {
+        "type": "system",
+        "subtype": "error",
+        "is_error": True,
+        "error": "subprocess exited rc=137 before result",
+    }
+    assert turn_total.labels(status="error")._value.get() == before + 1

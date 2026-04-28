@@ -53,7 +53,7 @@ export function ChatSurface() {
       .then(data => {
         if (cancelled) return;
         const events = (data?.events ?? []) as Record<string, unknown>[];
-        loadMessages(eventsToMessages(events));
+        loadMessages(eventsToMessages(events), conversationId);
       })
       .catch(() => {
         // Conversation gone (deleted on disk?). Clear the stale id.

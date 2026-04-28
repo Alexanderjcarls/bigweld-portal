@@ -12,11 +12,11 @@ allowed-tools:
 
 ## Schema (also in world-model.md)
 
-- **Article** `{id, title, summary, cliff_notes, body, embedding[2560], scope, tags[], created, updated}`
-- **Scope** `{name}` — top-level groupings (storage-support, hpe-support, hybrid-cloud, etc.)
+- **Article** `{slug, title, summary, cliff_notes, body, embedding[2560], type, status, is_hub, domain, confidence, created, updated}`
+- **Scope** `{name}` — `alletra-mp-block`, `hybrid-cloud`, `nimble-specific`, `pan-hpe`, `sfdc-internal`, `sfdc-nimble`
 - **Tag** `{name}` — fine-grained labels
 - **Source** `{name, url}` — where article material came from
-- **SfdcObject** `{name}` — Salesforce object (Asset, Case, etc.)
+- **SfdcObject** `{name, api_name}` — Salesforce object (Asset, Case, etc.)
 - **SfdcField** `{name, object_name, type}`
 - **SfdcRecordType** `{name, object_name}`
 
@@ -24,9 +24,12 @@ allowed-tools:
 
 - `(Article)-[:APPLIES_TO]->(Scope)`
 - `(Article)-[:TAGGED]->(Tag)`
-- `(Article)-[:FROM]->(Source)`
+- `(Article)-[:HAS_SOURCE]->(Source)`
 - `(Article)-[:REFERENCES]->(SfdcObject|SfdcField|SfdcRecordType)`
 - `(Article)-[:RELATES_TO]-(Article)` — reciprocal (write both directions; traverse undirected)
+- `(SfdcObject)-[:HAS_FIELD]->(SfdcField)`
+- `(SfdcObject)-[:HAS_RECORD_TYPE]->(SfdcRecordType)`
+- `(?)-[:DEPENDS_ON]->(?)`, `(?)-[:OWNED_BY]->(?)`
 
 ## Read patterns
 
@@ -81,7 +84,8 @@ RETURN a.slug, a.title, a.summary
 ```cypher
 MATCH (a:Article)
 WHERE NOT EXISTS { (other:Article)-[:RELATES_TO]->(a) }
-RETURN a.slug, a.title, a.summary, a.scope
+OPTIONAL MATCH (a)-[:APPLIES_TO]->(s:Scope)
+RETURN a.slug, a.title, a.summary, collect(s.name) AS scopes
 LIMIT 30
 ```
 
@@ -103,20 +107,30 @@ You maintain the graph (read + write). Always propose writes in chat first; run 
 
 ```cypher
 CREATE (a:Article {
-  id: $id,
+  slug: $slug,
   title: $title,
   summary: $summary,
   cliff_notes: $cliff_notes,
   body: $body,
-  scope: $scope,
-  tags: $tags,
+  type: $type,
+  status: $status,
+  is_hub: false,
+  domain: $domain,
+  confidence: $confidence,
   created: datetime(),
   updated: datetime()
 })
+WITH a
+MATCH (s:Scope {name: $scope_name})
+MERGE (a)-[:APPLIES_TO]->(s)
+WITH a
+UNWIND $tags AS tag_name
+MERGE (t:Tag {name: tag_name})
+MERGE (a)-[:TAGGED]->(t)
 RETURN a
 ```
 
-The `id` should be a UUID4 you generate. Embedding gets backfilled by a periodic job, OR you can compute it inline:
+Use a stable slug. Embedding gets backfilled by a periodic job, OR you can compute it inline:
 ```bash
 /datapool/bigweld/scripts/embed_query.py "<full body or summary>"
 ```
@@ -158,7 +172,7 @@ DELETE r
 WITH a
 MATCH (s:Scope {name: $new_scope})
 MERGE (a)-[:APPLIES_TO]->(s)
-SET a.scope = $new_scope, a.updated = datetime()
+SET a.updated = datetime()
 RETURN a
 ```
 
@@ -167,15 +181,16 @@ RETURN a
 This is destructive (one article gets deleted). Always plan it explicitly:
 
 1. Read both articles (titles, summaries, bodies, edges) and decide which is the canonical survivor.
-2. Show Alex the merge plan: "I'll keep `id_canonical`, redirect inbound edges from `id_loser` to `id_canonical`, fold any unique tags into the canonical, then DETACH DELETE `id_loser`."
+2. Show Alex the merge plan: "I'll keep `slug_canonical`, redirect inbound edges from `slug_loser` to `slug_canonical`, fold any unique tags into the canonical, then DETACH DELETE `slug_loser`."
 3. Wait for explicit "yes, run it."
 4. Run cypher:
 
 ```cypher
 // Step 1: redirect RELATES_TO edges from loser to canonical
 MATCH (other:Article)-[r:RELATES_TO]->(loser:Article {slug: $slug_loser})
-WHERE other.id <> $id_canonical
-MERGE (other)-[:RELATES_TO]->(canonical:Article {slug: $slug_canonical})
+MATCH (canonical:Article {slug: $slug_canonical})
+WHERE other.slug <> $slug_canonical
+MERGE (other)-[:RELATES_TO]->(canonical)
 DELETE r
 WITH 1 AS x
 // Step 2: fold tags
@@ -194,7 +209,7 @@ DETACH DELETE loser
 
 | Query shape | Use |
 |---|---|
-| Known entity name (article id, SFDC object name, scope name, tag name) | Cypher with direct `MATCH` |
+| Known entity name (article slug, SFDC object name, scope name, tag name) | Cypher with direct `MATCH` |
 | Fuzzy concept ("articles about field-mapping deltas") | Embedding similarity via `db.index.vector.queryNodes` |
 | Hybrid (concept-then-expand) | Embedding to find anchors, then Cypher to walk |
 | Aggregation (counts, density, coverage) | Cypher with `WITH` clauses |
@@ -208,11 +223,11 @@ DETACH DELETE loser
 
 ## Output formatting conventions
 
-- Single-result answer: quote the article's `summary` inline + cite by `id`.
-- ≤5 results: Markdown bullet list, each `[Title](id)` + 1-line summary excerpt.
-- >5 results: brief table with `id | title | scope | match score`.
+- Single-result answer: quote the article's `summary` inline + cite by `slug`.
+- ≤5 results: Markdown bullet list, each `[Title](slug)` + 1-line summary excerpt.
+- >5 results: brief table with `slug | title | scopes | match score`.
 - Multi-step results: narrative paragraph + structured table for the gap signals.
-- Always include the article `id` so Alex can ask "show me the body of N."
+- Always include the article `slug` so Alex can ask "show me the body of N."
 - After surfacing read results, ALWAYS check: is there a write opportunity here? If yes, propose it.
 
 ## Helper invocation reference
