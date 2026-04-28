@@ -2,8 +2,8 @@
 name: graph
 description: Bigweld substrate manual — schema, cypher patterns (read AND write), multi-step graph workflows. Invoke before any complex graph operation.
 allowed-tools:
-  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
-  - "Bash(python /datapool/bigweld/scripts/embed_query.py:*)"
+  - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
+  - "Bash(/datapool/bigweld/scripts/embed_query.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -41,7 +41,7 @@ ORDER BY score DESC
 
 `$query_vector` must be 2560-dim. To embed a query string:
 ```bash
-python /datapool/bigweld/scripts/embed_query.py "<query text>"
+/datapool/bigweld/scripts/embed_query.py "<query text>"
 ```
 
 ### Walk neighborhood (depth N, bidirectional RELATES_TO)
@@ -118,7 +118,7 @@ RETURN a
 
 The `id` should be a UUID4 you generate. Embedding gets backfilled by a periodic job, OR you can compute it inline:
 ```bash
-python /datapool/bigweld/scripts/embed_query.py "<full body or summary>"
+/datapool/bigweld/scripts/embed_query.py "<full body or summary>"
 ```
 Then `SET a.embedding = $embedding`.
 
@@ -219,16 +219,16 @@ DETACH DELETE loser
 
 ```bash
 # Read
-python /datapool/bigweld/neo4j-client.py --query "<cypher>" --params '{"k":"v"}'
+/datapool/bigweld/scripts/neo4j-client.py --query "<cypher>" --params '{"k":"v"}'
 
 # Embedding for a fuzzy query
-python /datapool/bigweld/scripts/embed_query.py "<text>"
+/datapool/bigweld/scripts/embed_query.py "<text>"
 
 # Direct cypher-shell for exploration
 cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"
 
 # Audited write (preferred for any write op)
-python /datapool/bigweld/scripts/audit_write.py \
+/datapool/bigweld/scripts/audit_write.py \
   --cypher "<cypher>" \
   --params '<json>' \
   --conv-id "$BIGWELD_CONVERSATION_ID"

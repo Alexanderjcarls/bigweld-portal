@@ -2,8 +2,8 @@
 name: citations
 description: Most-traversed articles around a topic — graph-walked citation count, surfaces canonical references.
 allowed-tools:
-  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
-  - "Bash(python /datapool/bigweld/scripts/embed_query.py:*)"
+  - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
+  - "Bash(/datapool/bigweld/scripts/embed_query.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -14,7 +14,7 @@ Strategy: embedding-anchor + graph-walk + frequency rank.
 
 ## Steps
 
-1. **Embed the topic** — `python /datapool/bigweld/scripts/embed_query.py "<topic>"`
+1. **Embed the topic** — `/datapool/bigweld/scripts/embed_query.py "<topic>"`
 2. **Find top-5 anchor articles** by embedding similarity:
    ```cypher
    CALL db.index.vector.queryNodes('article_embedding', 5, $query_vector)
@@ -36,15 +36,15 @@ Strategy: embedding-anchor + graph-walk + frequency rank.
 
 Two-step. First embed:
 ```bash
-VECTOR=$(python /datapool/bigweld/scripts/embed_query.py "<topic>")
+VECTOR=$(/datapool/bigweld/scripts/embed_query.py "<topic>")
 ```
 
 Then run anchor lookup + neighborhood walk:
 ```bash
-python /datapool/bigweld/neo4j-client.py \
+/datapool/bigweld/scripts/neo4j-client.py \
   --query "<step 2 cypher>" --params "{\"query_vector\":$VECTOR}"
 # capture anchor ids, then:
-python /datapool/bigweld/neo4j-client.py \
+/datapool/bigweld/scripts/neo4j-client.py \
   --query "<step 3 cypher>" --params "{\"anchor_ids\":[\"id1\",\"id2\",...]}"
 ```
 

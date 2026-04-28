@@ -2,7 +2,7 @@
 name: gaps
 description: Find sparse-coverage scopes/topics — surface candidates, then offer to fill them inline.
 allowed-tools:
-  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -43,10 +43,10 @@ LIMIT 20
 
 ```bash
 # No-arg
-python /datapool/bigweld/neo4j-client.py --query "<cypher above>"
+/datapool/bigweld/scripts/neo4j-client.py --query "<cypher above>"
 
 # Scoped
-python /datapool/bigweld/neo4j-client.py --query "<scoped cypher>" --params '{"scope":"storage-support"}'
+/datapool/bigweld/scripts/neo4j-client.py --query "<scoped cypher>" --params '{"scope":"storage-support"}'
 ```
 
 ## Output

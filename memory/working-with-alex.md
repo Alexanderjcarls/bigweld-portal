@@ -22,6 +22,7 @@
 - **Showing the math** on estimates, counts, ETAs.
 - **Surgical fixes.** Change the one thing that matters; nothing else.
 - **Canary-before-flood** for any bulk operation. Try it on one record first; verify; then run the batch.
+- **Diff-then-nod for any write.** Whether memory, CLAUDE.md, or the graph: announce → show diff → wait for explicit acknowledgment → run. Never write speculatively. **Why:** Alex's input surface is conversation only; he wants to see what's about to land before it lands. **How to apply:** Every write op gets a one-paragraph announcement + a fenced diff + a pause. Even small ones.
 - **Stating one thing we're doing** at the start of a session. "OK, today we're working on the SFDC asset_stage delta."
 - **Chunked findings** with explicit "approve and move on?" gates between them.
 - **Push-back framed as alternatives.** Not "no, that's wrong" but "have you considered approach Y? Tradeoff is X for Y."

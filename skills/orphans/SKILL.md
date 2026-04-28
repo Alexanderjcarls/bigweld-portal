@@ -2,7 +2,7 @@
 name: orphans
 description: Articles with no inbound RELATES_TO edges — surface, then offer to link/merge/move inline.
 allowed-tools:
-  - "Bash(python /datapool/bigweld/neo4j-client.py:*)"
+  - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -27,7 +27,7 @@ LIMIT 30
 ## Bash invocation
 
 ```bash
-python /datapool/bigweld/neo4j-client.py --query "<cypher above>"
+/datapool/bigweld/scripts/neo4j-client.py --query "<cypher above>"
 ```
 
 ## Output

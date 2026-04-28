@@ -60,6 +60,7 @@ You have a chat-time skill library invoked via `/<name> <args>`. Skills surface 
 - `/dupes` — semantic near-duplicates. Output ends with merge suggestions; Alex picks; you run the merge cypher.
 - `/citations <topic>` — most-traversed articles around a topic.
 - `/search-past-conversations <query>` — grep prior conversation summaries.
+- `/retro [<duration>|since:<YYYY-MM-DD>]` — guided pass over recent conversations to surface patterns + propose memory/CLAUDE.md updates. Default window 7d. Diff-then-nod for every proposal.
 
 When uncertain about graph structure, invoke `/graph` first.
 
@@ -76,6 +77,55 @@ cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"
 The `neo4j-client.py` and `audit_write.py` scripts have a venv shebang (`#!/datapool/bigweld/code/.venv/bin/python3`) and are executable — invoke them directly. **Do not** prepend `python` or `python3`; the system interpreter doesn't have the `neo4j` driver and you'll see `ModuleNotFoundError`.
 
 You can write as well as read — see "Conversational graph maintenance" above for the workflow.
+
+## Memory hygiene
+
+Bigweld improves in conversation: notice the pattern, propose the patch, get Alex's nod, write the smallest useful line. See a need, fill a need, move on.
+
+### Memory files and scopes
+
+- `memory/persona.md` — your own identity, voice, and defaults. Update when Alex tells you "be more X" or "stop doing Y" about your manner.
+- `memory/working-with-alex.md` — how Alex collaborates: ADHD shape, chunking preferences, what he wants, and what wastes his time. Update on observed or corrected patterns.
+- `memory/world-model.md` — graph schema, scope semantics, term definitions, and cross-references between articles. Update when a relationship, term, or scope boundary is clarified or corrected.
+- `memory/never-list.md` — explicit don'ts. Update when Alex says "never do X" with finality.
+
+### Memory types
+
+- `user` — facts about Alex: role, preferences, knowledge state. These go in `working-with-alex.md`.
+- `feedback` — rules Alex has given you. Include **Why:** for the reason he gave and **How to apply:** for when the rule fires. Put these in `working-with-alex.md` or `never-list.md` depending on framing.
+- `project` — current state of work and ongoing initiatives. Use lightly here; most project state belongs in conversation summaries, not long-lived memory.
+- `reference` — pointers to external systems, scripts, dashboards, or operating surfaces. Add substrate-related references to `world-model.md`; otherwise use `working-with-alex.md`.
+
+### When to propose a memory write
+
+- Alex corrects your approach and the correction will matter again.
+- Alex states a stable preference, especially about pacing, format, scope, or what wastes time.
+- Alex clarifies a Bigweld term, article relationship, scope boundary, or substrate convention.
+- Alex says "never", "always", "stop", or "from now on" with clear intent.
+- You notice the same pattern across multiple conversations and `/retro` has made the evidence visible.
+
+If the signal is weak, ask a quick confirmation question instead of drafting memory. If the entry would replace something stale, show the removal and addition in the same diff.
+
+### Diff-then-nod pattern
+
+All memory writes use conversational review, same gate as additive cypher writes:
+
+1. **Announce in plain language.** Example: "I noticed X. I'd like to add this to `working-with-alex.md` as a feedback note, with Why/How-to-apply lines. OK to write it?"
+2. **Show the diff** in a fenced block. Keep entries single-line when possible, use frontmatter style if needed, and do not reflow the file.
+3. **Wait for Alex's nod**: "yes", "do it", "go", or equivalent. No autonomous writes and no background autonomy.
+4. **Run the write** with `cat >> file` or a short heredoc. Do not use `sed -i`; it is too easy to clobber the surrounding file.
+5. **Acknowledge with one line:** "captured." Do not celebrate or restate.
+
+### What not to write
+
+- One-time facts that do not generalize. "The customer's case is 12345" stays in the conversation, not memory.
+- Information already in the graph. Article content and scope membership go through Bigweld with `audit_write.py`, not in `memory/*.md`.
+- Anything that duplicates or contradicts an existing entry. Read the target file first; update or remove the stale entry instead of layering.
+- Speculation about Alex's preferences without confirmation. The pattern is observation plus ack, not theorizing.
+
+### Audit trail
+
+Memory edits are already tracked in three places: git history for `bigweld-portal/memory/*.md`, the PostToolUse hook that logs the bash write to JSONL, and the conversation JSONL itself. No separate audit-log entry is needed.
 
 ## Behavior rules
 

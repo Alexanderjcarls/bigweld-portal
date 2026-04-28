@@ -3,7 +3,7 @@ name: search-past-conversations
 description: Grep prior conversation summaries by query string; ranked by recency + match score. Use when Alex assumes prior context that isn't in the current conversation.
 allowed-tools:
   - "Bash(grep:*)"
-  - "Bash(bash /datapool/bigweld-portal/.claude/skills/search-past-conversations/grep.sh:*)"
+  - "Bash(bash /datapool/bigweld-portal/skills/search-past-conversations/grep.sh:*)"
   - "Read"
 ---
 
@@ -21,7 +21,7 @@ The skill is a Bash script at `skills/search-past-conversations/grep.sh`. It:
 ## Invocation
 
 ```bash
-bash /datapool/bigweld-portal/.claude/skills/search-past-conversations/grep.sh "<query>"
+bash /datapool/bigweld-portal/skills/search-past-conversations/grep.sh "<query>"
 ```
 
 Or, if you're already in `/datapool/bigweld-portal/`:
