@@ -3,6 +3,9 @@ name: gaps
 description: Find sparse-coverage scopes/topics — surface candidates, then offer to fill them inline.
 allowed-tools:
   - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
+  - "Bash(/datapool/bigweld/scripts/write_article.py:*)"
+  - "Bash(/datapool/bigweld/scripts/edit_article.py:*)"
+  - "Bash(/datapool/bigweld/scripts/audit_write.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -58,4 +61,4 @@ Citation-card list ranked by sparsity. For each scope (or article), surface:
 - Density score
 - 1-2 example titles per scope
 
-**Then close the loop with action:** end with "**Want to fill any of these?** Tell me the gap and I'll draft an article and write it." If Alex names a gap, draft the article body in chat, propose the `CREATE (a:Article ...)` cypher, run after his nod, and audit-log the write. The skill surfaces; the conversation acts.
+**Then close the loop with action:** end with "**Want to fill any of these?** Tell me the gap and I'll draft an article and write it." If Alex names a gap, draft the article body in chat, propose the JSON payload (body + title + edges + metadata; NEVER include `summary`, `cliff_notes`, or `embedding` — those are substrate-owned), run `/datapool/bigweld/scripts/write_article.py --payload '<json>' --conv-id "$BIGWELD_CONVERSATION_ID" --reason "<reason>"` after his nod. The substrate generates the derived fields and audit-logs automatically. The skill surfaces; the conversation acts.

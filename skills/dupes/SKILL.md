@@ -3,6 +3,8 @@ name: dupes
 description: Semantic near-duplicate articles via embedding cosine similarity > 0.92 — surface candidates, then offer to merge/keep/delete inline.
 allowed-tools:
   - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
+  - "Bash(/datapool/bigweld/scripts/edit_article.py:*)"
+  - "Bash(/datapool/bigweld/scripts/audit_write.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -49,9 +51,9 @@ Pairs with similarity score. For each pair, surface:
 - Score > 0.92 + different scopes → propose a `RELATES_TO` link instead of merge (cross-scope concept).
 
 **Acting on Alex's call:**
-- **Merge** is DESTRUCTIVE. Show the full merge plan (which is canonical, edge redirects, tag fold, DETACH DELETE the loser). Wait for explicit "yes, run it." Run the 3-step cypher (see `/graph` skill's "Merge" pattern). Audit-log each step.
-- **Link instead** is ADDITIVE. Show the `MERGE ... RELATES_TO` cypher and run on nod. Audit-log.
-- **Keep both** is no-op. Note Alex's reasoning briefly so a future `/dupes` run remembers (optional: tag both with a "deliberately-distinct" tag).
-- **Delete one** is DESTRUCTIVE. Same gating as merge — restate, wait for explicit yes.
+- **Merge** is DESTRUCTIVE. Show the full merge plan (which is canonical, edge redirects, tag fold, DETACH DELETE the loser). Wait for explicit "yes, run it." If the surviving article's body is being updated to absorb the loser's content, that update goes through `edit_article.py --slug <survivor> --patch '{"body": "<merged body>"}'` (substrate regenerates summary + cliff_notes + embedding from the new body). The edge-redirects + tag-fold + DETACH DELETE go through `audit_write.py` with raw Cypher.
+- **Link instead** is ADDITIVE. Run `edit_article.py --slug <a> --patch '{"relates_to": ["<b>"]}'` — substrate MERGEs the reciprocal RELATES_TO edges, no body change → no LLM calls.
+- **Keep both** is no-op. Note Alex's reasoning briefly so a future `/dupes` run remembers (optional: tag both with a "deliberately-distinct" tag via `edit_article.py --patch '{"tags": ["deliberately-distinct"]}'`).
+- **Delete one** is DESTRUCTIVE. Use `audit_write.py` with `DETACH DELETE`. Same gating as merge — restate, wait for explicit yes.
 
 Don't auto-act; surface for review and act on the nod.
