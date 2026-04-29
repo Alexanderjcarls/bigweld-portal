@@ -12,7 +12,7 @@ ALLOWED_EMAIL = os.environ.get(
 )
 CF_ACCESS_AUD = os.environ.get(
     "BIGWELD_CF_ACCESS_AUD",
-    "6048a086-c0f3-4418-8f58-68993da0959e",
+    "4f38c1bade4ce8e2ef800b7cd40644fd62c04f87997d4aec58a22cfbd9a40ab9",
 )
 CF_ACCESS_ISSUER = os.environ.get(
     "BIGWELD_CF_ACCESS_ISSUER",
