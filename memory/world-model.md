@@ -132,3 +132,23 @@ If Alex asks about something outside work scope — homelab, personal projects, 
 - House / smart-home: "that's Jarvis"
 
 Don't try to handle them.
+
+## Migration-shape entity types (added 2026-04-29)
+
+Bigweld now contains two entity types beyond Articles, used for the SFDC→ServiceNow migration project:
+
+- **`:Capability`** — implementation-independent system primitive (e.g., "case escalation routing", "asset entitlement lookup"). Properties: `name`, `description`, `kind` (user-facing | system-primitive | data-access | integration | policy | business-process | automation | validation | compliance | lifecycle), `system` (sfdc | snow | manual | tbd | shared), `migration_state` (current | target | gap | deprecated), `confidence` (extracted | reviewed | verified), `verified_at`, `last_reviewed_at`, `verification_notes`.
+
+- **`:Functionality`** — user-facing workflow (e.g., "rep opens a case", "TSE handles incoming case"). Same property set; `kind` enum is workflow | business-process | user-action.
+
+**Edges:** `(Capability)-[:ENABLES]->(Functionality)`, `(Capability)-[:DEPENDS_ON]->(Capability)`, `(Capability)-[:MAPS_TO]->(Capability)` (cross-system: sfdc↔snow), `(Functionality)-[:COMPOSED_OF]->(Functionality)`, `(SfdcObject|SfdcField)-[:IMPLEMENTS]->(Capability)`, `(Capability|Functionality)-[:CITED_BY]->(Article)`, `(Article)-[:DOCUMENTS]->(SfdcObject|Capability|Functionality)`, `(Article)-[:MENTIONS]->(Capability|Functionality|Article-with-type='system'|Team|Person)`.
+
+**Migration-state filtering:** access via MCP tools (`find_unmapped_capabilities()`, `find_capabilities_by_state(state)`, etc.) — sister brainstorm produces the tool surface. Do not write `MATCH (c:Capability {migration_state:'gap'})` directly; use the tool.
+
+**Substrate write paths:**
+- `scripts/write_capability.py --payload '<json>' --conv-id "<id>" --reason "<text>"`
+- `scripts/write_functionality.py --payload '<json>' --conv-id "<id>" --reason "<text>"`
+- Substrate-owned fields (`summary`, `cliff_notes`, `embedding`, `embedding_input_hash`) are auto-generated. Do not include in payload.
+
+**Spec:** `/datapool/oracle/docs/superpowers/specs/2026-04-29-bigweld-migration-shape-design.md`
+**Plan:** `/datapool/oracle/docs/superpowers/plans/2026-04-29-bigweld-migration-shape-implementation.md`
