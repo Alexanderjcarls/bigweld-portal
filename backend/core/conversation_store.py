@@ -165,22 +165,28 @@ class ConversationStore:
         }
         self.append_event(conv_id, event)
 
-    def get_latest_usage(self, conv_id: str) -> dict[str, int] | None:
-        """Return the most recent usage token fields for a conversation."""
-        for ev in reversed(self.read_events(conv_id)):
+    def get_max_usage_total(self, conv_id: str) -> int:
+        """Return max(input + cache_creation + cache_read) across all usage events.
+
+        Stored usage events come from Claude Code's stream-json `result` event, which
+        aggregates token counts across every agentic-loop iteration within a turn. So
+        a single stored value is an upper bound on real context size, not a direct
+        measurement of it. Returning the running max across turns gives a stable,
+        monotonic high-water-mark suitable for a "context fill" gauge — cache TTL
+        resets and per-turn iteration-count swings stop pulling the bar backwards.
+        """
+        max_total = 0
+        for ev in self.read_events(conv_id):
             if ev.get("type") != "usage":
                 continue
-            return {
-                "input_tokens": self._int_token(ev.get("input_tokens")),
-                "cache_creation_input_tokens": self._int_token(
-                    ev.get("cache_creation_input_tokens")
-                ),
-                "cache_read_input_tokens": self._int_token(
-                    ev.get("cache_read_input_tokens")
-                ),
-                "output_tokens": self._int_token(ev.get("output_tokens")),
-            }
-        return None
+            total = (
+                self._int_token(ev.get("input_tokens"))
+                + self._int_token(ev.get("cache_creation_input_tokens"))
+                + self._int_token(ev.get("cache_read_input_tokens"))
+            )
+            if total > max_total:
+                max_total = total
+        return max_total
 
     def write_summary(self, conv_id: str, content: str) -> None:
         lock_path = self._lock_path(conv_id)

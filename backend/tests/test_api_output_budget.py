@@ -34,7 +34,7 @@ async def test_budget_empty_conversation_returns_zero(client):
     }
 
 
-async def test_budget_uses_latest_synthetic_usage_event(client, tmp_path):
+async def test_budget_uses_max_total_across_usage_events(client, tmp_path):
     store = ConversationStore(root=tmp_path / "conversations")
     conv_id = store.create()
     store.append_event(
@@ -62,7 +62,7 @@ async def test_budget_uses_latest_synthetic_usage_event(client, tmp_path):
 
     assert r.status_code == 200
     assert r.json() == {
-        "context_window_pct": 0.5,
+        "context_window_pct": 90.0,
         "context_window_total": 1000000,
     }
 

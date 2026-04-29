@@ -14,13 +14,8 @@ async def get_budget(conv_id: str | None = None) -> dict:
     context_window = _context_window()
     pct = 0.0
     if conv_id:
-        usage = _store().get_latest_usage(conv_id)
-        if usage:
-            total = (
-                usage.get("input_tokens", 0)
-                + usage.get("cache_creation_input_tokens", 0)
-                + usage.get("cache_read_input_tokens", 0)
-            )
+        total = _store().get_max_usage_total(conv_id)
+        if total > 0:
             pct = min(100.0, (total / context_window) * 100.0)
     return {"context_window_pct": pct, "context_window_total": context_window}
 
