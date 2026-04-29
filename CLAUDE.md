@@ -24,30 +24,58 @@ As you and Alex talk, watch for graph-worthy moments and persist what matters. D
 
 ### How to propose a write
 
-For additive ops (`CREATE / SET / MERGE`):
-1. State what you're about to write in plain language ("I'll add an article about Asset_Stage promotion filtering, linked to the existing Asset article").
-2. Show the cypher in a code block.
-3. Run it after Alex's brief acknowledgment (nod, "yes", "do it"). Don't wait for ceremony.
+You have three write tools. Pick the right one for the operation:
 
-For destructive ops (`DELETE / DETACH DELETE / DROP / REMOVE`):
+#### Net-new article — `write_article.py`
+
+For a brand-new article (you're creating a node that doesn't exist yet).
+
+1. Draft the article structure in plain language ("I'll add an article about Asset_Stage promotion filtering, linked to Asset and Case").
+2. Show the JSON payload you intend to write. **Never include `summary`, `cliff_notes`, `embedding`, or `embedding_input_hash` — those are substrate-owned. The substrate generates them from your body.**
+3. Run after Alex's brief acknowledgment:
+
+```bash
+/datapool/bigweld/scripts/write_article.py \
+  --payload '<json>' \
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "<one-line reason>"
+```
+
+#### Existing-article edit — `edit_article.py`
+
+For changing an article that already exists. Patch-style: send only the fields you want to change.
+
+```bash
+/datapool/bigweld/scripts/edit_article.py \
+  --slug "<slug>" \
+  --patch '{"body": "new body text"}' \
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "Alex clarified Asset_Stage filter behavior"
+```
+
+If `body` or `title` is in the patch, the substrate automatically regenerates summary, cliff_notes, and embedding. If you're only adding a tag or a RELATES_TO edge, those edge keys (`tags`, `relates_to`, etc.) are accepted in the patch and MERGEd additively — no LLM calls happen.
+
+**Patch keys you must NOT include:** `summary`, `cliff_notes`, `embedding`, `embedding_input_hash`, `summary_prompt_version`, `summary_generated_at`, `last_indexed`. The substrate manages all of those.
+
+#### Edge removes and surgical Cypher — `audit_write.py`
+
+For destructive ops (`DELETE / DETACH DELETE / DROP / REMOVE`) and surgical Cypher that doesn't fit the patch model. Example: removing a single RELATES_TO edge between two articles without otherwise changing either.
+
 1. State what will be destroyed and why.
 2. Show the cypher.
 3. **Wait for explicit "yes, run it"** — no ambiguity. Restate the irreversible nature ("this will detach-delete the orphan article and 3 inbound edges; sure?") and pause.
-
-### Audit logging
-
-Every write you run should append a line to the audit log via the helper:
 
 ```bash
 /datapool/bigweld/scripts/audit_write.py \
   --cypher "<cypher>" \
   --params '<json>' \
-  --conv-id "$BIGWELD_CONVERSATION_ID"
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "<one-line reason>"
 ```
 
-That log lives at `/datapool/bigweld/audit.log` and is searchable later (`grep ARTICLE_ID /datapool/bigweld/audit.log`). If Alex ever asks "did you delete X last Tuesday?", the answer is in the log.
+### Audit logging
 
-If the helper doesn't exist yet (substrate hasn't shipped it), use `cypher-shell` directly and note in chat that the audit helper is pending.
+Every write you run is automatically audited. `write_article.py` and `edit_article.py` log structured `op` entries; `audit_write.py` logs the raw cypher + params. The combined log lives at `/datapool/bigweld/audit.log` and is searchable later (`grep <slug> /datapool/bigweld/audit.log`). If Alex ever asks "did you delete X last Tuesday?", the answer is in the log.
 
 ## Tools — slash commands
 
@@ -74,7 +102,7 @@ The substrate lives at `/datapool/bigweld/`. Query Neo4j via Bash:
 cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"
 ```
 
-The `neo4j-client.py` and `audit_write.py` scripts have a venv shebang (`#!/datapool/bigweld/code/.venv/bin/python3`) and are executable — invoke them directly. **Do not** prepend `python` or `python3`; the system interpreter doesn't have the `neo4j` driver and you'll see `ModuleNotFoundError`.
+The `neo4j-client.py`, `write_article.py`, `edit_article.py`, and `audit_write.py` scripts have a venv shebang (`#!/datapool/bigweld/code/.venv/bin/python3`) and are executable — invoke them directly. **Do not** prepend `python` or `python3`; the system interpreter doesn't have the `neo4j` driver and you'll see `ModuleNotFoundError`.
 
 You can write as well as read — see "Conversational graph maintenance" above for the workflow.
 
