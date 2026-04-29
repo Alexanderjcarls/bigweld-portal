@@ -4,6 +4,9 @@ description: Bigweld substrate manual — schema, cypher patterns (read AND writ
 allowed-tools:
   - "Bash(/datapool/bigweld/scripts/neo4j-client.py:*)"
   - "Bash(/datapool/bigweld/scripts/embed_query.py:*)"
+  - "Bash(/datapool/bigweld/scripts/write_article.py:*)"
+  - "Bash(/datapool/bigweld/scripts/edit_article.py:*)"
+  - "Bash(/datapool/bigweld/scripts/audit_write.py:*)"
   - "Bash(cypher-shell:*)"
   - "Read"
 ---
@@ -232,6 +235,8 @@ DETACH DELETE loser
 
 ## Helper invocation reference
 
+> **Substrate-owned fields:** `summary`, `cliff_notes`, `embedding`, `embedding_input_hash`, `summary_prompt_version`, `summary_generated_at`, `last_indexed`. NEVER include these in any payload or patch — `write_article.py` and `edit_article.py` reject payloads that contain them. The substrate generates them from `body` + `title`.
+
 ```bash
 # Read
 /datapool/bigweld/scripts/neo4j-client.py --query "<cypher>" --params '{"k":"v"}'
@@ -242,14 +247,42 @@ DETACH DELETE loser
 # Direct cypher-shell for exploration
 cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"
 
-# Audited write (preferred for any write op)
+# Net-new article (substrate generates summary + cliff_notes + embedding)
+/datapool/bigweld/scripts/write_article.py \
+  --payload '{"slug":"foo","title":"Foo","type":"process",
+              "domain":"storage-support","status":"active",
+              "body":"…","confidence":"medium","is_hub":false,
+              "created":"2026-04-29","updated":"2026-04-29",
+              "source_date":"2026-04-29","ingested_date":"2026-04-29",
+              "source_type":"alex-brain-dump","source_id":"foo-dump",
+              "owned_by":null,
+              "augmented_with":[],"relates_to":[],"depends_on":[],
+              "applies_to":[],"tags":[]}' \
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "Alex described foo flow"
+
+# Patch-style edit of an existing article (substrate regenerates derived fields
+# when body or title is in the patch; pure-edge patches skip the LLM calls)
+/datapool/bigweld/scripts/edit_article.py \
+  --slug "foo" \
+  --patch '{"body": "updated body text"}' \
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "Alex clarified foo behavior"
+
+# Edge-only patch (no LLM calls, additive MERGE)
+/datapool/bigweld/scripts/edit_article.py \
+  --slug "foo" \
+  --patch '{"tags": ["sfdc"], "relates_to": ["bar"]}' \
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "linking foo to bar"
+
+# Audited raw cypher (use only for edge removes / surgical ops that don't fit the patch model)
 /datapool/bigweld/scripts/audit_write.py \
   --cypher "<cypher>" \
   --params '<json>' \
-  --conv-id "$BIGWELD_CONVERSATION_ID"
+  --conv-id "$BIGWELD_CONVERSATION_ID" \
+  --reason "<one-line reason>"
 ```
-
-If `audit_write.py` doesn't exist yet (substrate hasn't shipped it), use `neo4j-client.py` directly and note in chat that the audit helper is pending.
 
 ## Performance hints
 
