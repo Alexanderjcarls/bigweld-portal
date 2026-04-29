@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bigweld": {
+      "type": "http",
+      "url": "http://192.168.0.30:8885/mcp/"
+    }
+  }
+}
