@@ -24,77 +24,69 @@ As you and Alex talk, watch for graph-worthy moments and persist what matters. D
 
 ### How to propose a write
 
-You have three write tools. Pick the right one for the operation:
+The bigweld-mcp server (LAN-only at `192.168.0.30:8885`) exposes 32 typed tools as the canonical agent surface. Tier 0 tools (always loaded) cover the daily-driver operations; Tier 1+ tools attach when slash skills fire. Use `get_schema()` (Tier 0) any time you need the live schema reference; the tool descriptions self-document.
 
-#### Net-new article — `write_article.py`
+#### Net-new node — `write_node`
 
-For a brand-new article (you're creating a node that doesn't exist yet).
+For a brand-new Article, Capability, or Functionality.
 
-1. Draft the article structure in plain language ("I'll add an article about Asset_Stage promotion filtering, linked to Asset and Case").
-2. Show the JSON payload you intend to write. **Never include `summary`, `cliff_notes`, `embedding`, or `embedding_input_hash` — those are substrate-owned. The substrate generates them from your body.**
-3. Run after Alex's brief acknowledgment:
+1. Draft the node structure in plain language ("I'll add a Capability about Asset_Stage promotion filtering, system=sfdc, kind=automation").
+2. Show the JSON payload you intend to write. **Never include `summary`, `cliff_notes`, `embedding`, or `embedding_input_hash` — those are substrate-owned. The substrate generates them from `body`.**
+3. After Alex's brief acknowledgment, call `write_node(label, payload, conv_id, reason)`.
 
-```bash
-/datapool/bigweld/scripts/write_article.py \
-  --payload '<json>' \
-  --conv-id "$BIGWELD_CONVERSATION_ID" \
-  --reason "<one-line reason>"
+#### Existing-node edit — `edit_node`
+
+For changing an Article, Capability, or Functionality that already exists. Patch-style: send only the fields you want to change. If `body` or `title`/`name` is in the patch, the substrate automatically re-derives summary/cliff_notes/embedding. Edge-only patches skip the LLM calls.
+
 ```
-
-#### Existing-article edit — `edit_article.py`
-
-For changing an article that already exists. Patch-style: send only the fields you want to change.
-
-```bash
-/datapool/bigweld/scripts/edit_article.py \
-  --slug "<slug>" \
-  --patch '{"body": "new body text"}' \
-  --conv-id "$BIGWELD_CONVERSATION_ID" \
-  --reason "Alex clarified Asset_Stage filter behavior"
+edit_node(label="Capability", slug="case-reopen-on-email-reply", patch={"body": "new body"}, conv_id, reason)
 ```
-
-If `body` or `title` is in the patch, the substrate automatically regenerates summary, cliff_notes, and embedding. If you're only adding a tag or a RELATES_TO edge, those edge keys (`tags`, `relates_to`, etc.) are accepted in the patch and MERGEd additively — no LLM calls happen.
 
 **Patch keys you must NOT include:** `summary`, `cliff_notes`, `embedding`, `embedding_input_hash`, `summary_prompt_version`, `summary_generated_at`, `last_indexed`. The substrate manages all of those.
 
-#### Edge removes and surgical Cypher — `audit_write.py`
+#### Edges — `link` / `unlink` / `tag` / `untag` / `set_scope`
 
-For destructive ops (`DELETE / DETACH DELETE / DROP / REMOVE`) and surgical Cypher that doesn't fit the patch model. Example: removing a single RELATES_TO edge between two articles without otherwise changing either.
+Typed edge ops over the validated edge allowlist. `link` / `tag` execute directly; `unlink` / `untag` / `set_scope(replace_existing=True)` are confirm-gated (`confirmed=False` returns dry-run preview; `confirmed=True` after Alex's nod executes).
 
-1. State what will be destroyed and why.
-2. Show the cypher.
-3. **Wait for explicit "yes, run it"** — no ambiguity. Restate the irreversible nature ("this will detach-delete the orphan article and 3 inbound edges; sure?") and pause.
+#### Cross-system pairing — `pair`
+
+The migration mapping op: `pair(sfdc_slug, snow_slug, notes, confirmed)` creates the MAPS_TO edge + bumps both Capabilities to `confidence='verified'` + sets `verified_at`. Confirm-gated because retract is real work.
+
+#### Power-user backdoor — `audit_write.py`
+
+For surgical Cypher that doesn't fit the typed-tool surface (rare; flag the use in conversation when it happens). The MCP tools cover ~99% of operations; this is the escape hatch when one doesn't fit.
 
 ```bash
 /datapool/bigweld/scripts/audit_write.py \
-  --cypher "<cypher>" \
-  --params '<json>' \
+  --cypher "<cypher>" --params '<json>' \
   --conv-id "$BIGWELD_CONVERSATION_ID" \
   --reason "<one-line reason>"
 ```
 
 ### Audit logging
 
-Every write you run is automatically audited. `write_article.py` and `edit_article.py` log structured `op` entries; `audit_write.py` logs the raw cypher + params. The combined log lives at `/datapool/bigweld/audit.log` and is searchable later (`grep <slug> /datapool/bigweld/audit.log`). If Alex ever asks "did you delete X last Tuesday?", the answer is in the log.
+Every MCP write tool passes `source="mcp"` + `conv_id` + `reason` through to the substrate's `audit_log.record_op()`. Confirmed destructive ops also record `confirmed_by_agent: true`. The combined log lives at `/datapool/bigweld/audit.log` and is readable in-conversation via the `audit_log_read` MCP tool (Tier 2). Power-user `audit_write.py` calls log raw cypher + params.
 
 ## Tools — slash commands
 
-You have a chat-time skill library invoked via `/<name> <args>`. Skills surface what's THERE (or missing); writes happen in the conversation flow that follows, not as separate write-skills.
+You have a chat-time skill library invoked via `/<name> <args>`. Skills are also auto-invoked from natural language when the agent recognizes intent matches a skill description — slash form is the explicit deterministic-routing trigger.
 
-- `/graph` — substrate manual: schema, cypher patterns (read AND write), multi-step graph workflows. Invoke this BEFORE any complex graph operation.
-- `/gaps [scope]` — sparse-coverage analyzer. With no args, walks all scopes; with a scope name, scoped analysis. Output ends with "want to fill these?" — Alex picks; you draft the article(s).
-- `/orphans` — articles with no inbound RELATES_TO. Output ends with link suggestions; Alex picks; you write the edges.
-- `/rollup <scope>` — coverage summary for a scope. Surfaces context for batch work.
-- `/dupes` — semantic near-duplicates. Output ends with merge suggestions; Alex picks; you run the merge cypher.
-- `/citations <topic>` — most-traversed articles around a topic.
-- `/search-past-conversations <query>` — grep prior conversation summaries.
-- `/retro [<duration>|since:<YYYY-MM-DD>]` — guided pass over recent conversations to surface patterns + propose memory/CLAUDE.md updates. Default window 7d. Diff-then-nod for every proposal.
+- `/citations <topic>` — wraps `find_citations` (Tier 1)
+- `/dupes [label]` — wraps `find_dupes` (Tier 1); label-routed across Article/Capability/Functionality
+- `/gaps` — wraps `find_capabilities_by_state(state="gap")` (Tier 1) for migration-flagged gaps; the broader unmapped sweep is Tier 0 `find_unmapped_capabilities()`, always available without a slash
+- `/orphans` — wraps `find_orphans` (Tier 1) across all three node types
+- `/rollup [pivot]` — wraps `coverage_summary` (Tier 1) with scope/system/migration_state pivots
+- `/unmapped` — daily migration query: `find_unmapped_capabilities` (Tier 0) + offers `pair` (Tier 1)
+- `/verify [label]` — curation review pass: surface `confidence='extracted'` nodes + offer `mark_verified` (Tier 1)
+- `/atrisk <capability_slug>` — impact analysis for capability deprecation: `find_functionalities_at_risk` + `walk_dependency_chain` (Tier 1)
+- `/retro [<duration>|since:<YYYY-MM-DD>]` — guided pass over recent conversations to surface patterns + propose memory/CLAUDE.md updates. Bash skill (greps conversation files, not graph). Default window 7d. Diff-then-nod for every proposal.
+- `/search-past-conversations <query>` — grep prior conversation summaries. Bash skill (out of MCP scope).
 
-When uncertain about graph structure, invoke `/graph` first.
+The schema reference that used to live in `/graph` is now the `get_schema()` MCP tool (Tier 0). Call it any time you need the live label/edge/allowlist/count snapshot.
 
 ## Backend access (Bigweld substrate)
 
-The substrate lives at `/datapool/bigweld/`. Query Neo4j via Bash:
+The substrate lives at `/datapool/bigweld/` and is exposed primarily through the bigweld-mcp server. The Tier 0 read tools (`get_node`, `find_nodes`, `nearest_nodes`, `traverse`, `get_neighbors`, `search_fulltext`) cover routine reads. For raw ad-hoc Cypher exploration when no typed tool fits, the legacy CLI is still available:
 
 ```bash
 /datapool/bigweld/scripts/neo4j-client.py --query "<cypher>"
@@ -102,9 +94,7 @@ The substrate lives at `/datapool/bigweld/`. Query Neo4j via Bash:
 cypher-shell -a bolt://127.0.0.1:7687 "<cypher>"
 ```
 
-The `neo4j-client.py`, `write_article.py`, `edit_article.py`, and `audit_write.py` scripts have a venv shebang (`#!/datapool/bigweld/code/.venv/bin/python3`) and are executable — invoke them directly. **Do not** prepend `python` or `python3`; the system interpreter doesn't have the `neo4j` driver and you'll see `ModuleNotFoundError`.
-
-You can write as well as read — see "Conversational graph maintenance" above for the workflow.
+These are read-only fallbacks. Routine work goes through the MCP tools.
 
 ## Memory hygiene
 
@@ -150,10 +140,11 @@ All memory writes use conversational review, same gate as additive cypher writes
 - Information already in the graph. Article content and scope membership go through Bigweld with `audit_write.py`, not in `memory/*.md`.
 - Anything that duplicates or contradicts an existing entry. Read the target file first; update or remove the stale entry instead of layering.
 - Speculation about Alex's preferences without confirmation. The pattern is observation plus ack, not theorizing.
+- Information already in the graph. Article/Capability/Functionality content + scope membership + edges all go through the MCP tools (`write_node` / `edit_node` / `link` / `tag`), not into `memory/*.md`.
 
 ### Audit trail
 
-Memory edits are already tracked in three places: git history for `bigweld-portal/memory/*.md`, the PostToolUse hook that logs the bash write to JSONL, and the conversation JSONL itself. No separate audit-log entry is needed.
+Memory edits are tracked in three places: git history for `bigweld-portal/memory/*.md`, the PostToolUse hook that logs the bash write to JSONL, and the conversation JSONL itself. Graph writes via MCP tools are tracked in `/datapool/bigweld/audit.log` with `source="mcp"`. No separate audit-log entry is needed for memory edits.
 
 ## Behavior rules
 
