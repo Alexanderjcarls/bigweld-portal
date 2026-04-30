@@ -1,49 +1,33 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
-from pydantic_ai.mcp import MCPServerStreamableHTTP
 
-from backend.v2.agent.compactor import (
-    MessageForCompaction,
-    build_compactor_agent,
-    compact_message_range,
-)
+from backend.v2.agent.compactor import compact_conversation
+from backend.v2.config import settings
 
 
-class StubCompactorAgent:
-    def __init__(self):
-        self.prompt = ""
+@pytest.mark.asyncio
+async def test_compact_conversation_returns_concatenated_text_from_sdk_stream():
+    first = SimpleNamespace(content=[SimpleNamespace(text="Case reopen workflow ")])
+    second = SimpleNamespace(content=[SimpleNamespace(text="keeps turns immutable.")])
 
-    async def run(self, user_prompt: str):
-        self.prompt = user_prompt
-        return SimpleNamespace(
-            output=(
-                "Topic: Case reopen workflow.\n"
-                "Key entities: case-reopen.\n"
-                "Decisions made: keep original turns immutable.\n"
-                "Open questions: none."
-            )
+    with patch("backend.v2.agent.compactor.query", return_value=_async_iter([first, second])) as mock_query:
+        summary = await compact_conversation(
+            [
+                {"role": "user", "content": "Compact case-reopen work."},
+                {"role": "assistant", "content": "Decision: immutable turns."},
+            ]
         )
 
+    assert summary == "Case reopen workflow keeps turns immutable."
+    kwargs = mock_query.call_args.kwargs
+    assert "Compact this conversation:" in kwargs["prompt"]
+    assert "USER: Compact case-reopen work." in kwargs["prompt"]
+    assert "ASSISTANT: Decision: immutable turns." in kwargs["prompt"]
+    assert kwargs["options"].model == settings.MODEL
 
-@pytest.mark.asyncio
-async def test_compactor_builds_with_fallback_model_without_mcp_toolsets():
-    agent = build_compactor_agent()
-    assert agent is not None
-    assert len(agent.model.models) == 2
-    assert not any(isinstance(toolset, MCPServerStreamableHTTP) for toolset in agent.toolsets)
 
-
-@pytest.mark.asyncio
-async def test_compact_message_range_uses_stubbed_agent():
-    stub = StubCompactorAgent()
-    messages = [
-        MessageForCompaction(turn_idx=3, role="user", content="Compact case-reopen work."),
-        MessageForCompaction(turn_idx=4, role="assistant", content="Decision: immutable turns."),
-    ]
-
-    summary = await compact_message_range(messages, agent=stub)
-
-    assert summary.startswith("Topic: Case reopen workflow.")
-    assert "[3] user: Compact case-reopen work." in stub.prompt
-    assert "[4] assistant: Decision: immutable turns." in stub.prompt
+async def _async_iter(items):
+    for item in items:
+        yield item

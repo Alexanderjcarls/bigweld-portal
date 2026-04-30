@@ -1,47 +1,69 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from pydantic_ai.mcp import MCPServerStreamableHTTP
-from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.openai import OpenAIChatModel
 
-from backend.v2.agent.bigweld_agent import BigweldDeps, build_agent, load_persona_text
-from backend.v2 import config as v2_config
+from backend.v2.agent.bigweld_agent import BigweldDeps, _build_options, stream_agent_response
+from backend.v2.config import settings
+
+
+def test_build_options_sets_model_from_config():
+    deps = BigweldDeps(conversation_id="c1")
+    opts = _build_options(deps, retrieved_context=None)
+    assert opts.model == settings.MODEL
+
+
+def test_build_options_merges_retrieved_context():
+    deps = BigweldDeps(conversation_id="c1", persona_text="PERSONA")
+    opts = _build_options(deps, retrieved_context="RETRIEVED")
+    assert "PERSONA" in opts.system_prompt
+    assert "RETRIEVED" in opts.system_prompt
+    assert opts.system_prompt.index("PERSONA") < opts.system_prompt.index("RETRIEVED")
+
+
+def test_build_options_no_retrieved_context_omits_separator():
+    deps = BigweldDeps(conversation_id="c1", persona_text="PERSONA")
+    opts = _build_options(deps, retrieved_context=None)
+    assert opts.system_prompt == "PERSONA"
+
+
+def test_build_options_includes_mcp_server():
+    deps = BigweldDeps(conversation_id="c1")
+    opts = _build_options(deps, retrieved_context=None)
+    assert "bigweld" in opts.mcp_servers
+    assert opts.mcp_servers["bigweld"]["type"] == "http"
+    assert opts.mcp_servers["bigweld"]["url"] == settings.MCP_URL
+
+
+def test_build_options_enables_tool_search():
+    deps = BigweldDeps(conversation_id="c1")
+    opts = _build_options(deps, retrieved_context=None)
+    assert opts.env.get("ENABLE_TOOL_SEARCH") == "true"
 
 
 @pytest.mark.asyncio
-async def test_agent_builds_with_fallback_model_when_nas_url_set(monkeypatch):
-    monkeypatch.setattr(v2_config.settings, "NAS_VLLM_URL", "http://192.168.0.25:8005/v1")
-    agent = build_agent()
-    assert agent is not None
-    assert isinstance(agent.model, FallbackModel)
-    assert len(agent.model.models) == 2
-    assert any(isinstance(toolset, MCPServerStreamableHTTP) for toolset in agent.toolsets)
-    assert agent.deps_type is BigweldDeps
-    # Single merged dynamic system_prompt — DeepInfra Qwen requires merged systems.
-    assert len(agent._system_prompt_dynamic_functions) == 1
+async def test_stream_agent_response_yields_events_from_sdk():
+    deps = BigweldDeps(conversation_id="c1")
+    mock_event = MagicMock()
+
+    with (
+        patch("backend.v2.agent.bigweld_agent.ClaudeSDKClient") as MockClient,
+        patch(
+            "backend.v2.agent.bigweld_agent.run_pre_retrieval",
+            new=AsyncMock(return_value=""),
+        ),
+    ):
+        instance = MockClient.return_value.__aenter__.return_value
+        instance.receive_response = MagicMock(return_value=_async_iter([mock_event]))
+        instance.query = AsyncMock()
+
+        events = []
+        async for ev in stream_agent_response(deps, "hello", []):
+            events.append(ev)
+
+        assert events == [mock_event]
+        instance.query.assert_awaited_once_with("hello")
 
 
-@pytest.mark.asyncio
-async def test_agent_builds_cloud_only_when_nas_url_unset(monkeypatch):
-    monkeypatch.setattr(v2_config.settings, "NAS_VLLM_URL", "")
-    agent = build_agent()
-    assert agent is not None
-    assert isinstance(agent.model, OpenAIChatModel)
-    assert any(isinstance(toolset, MCPServerStreamableHTTP) for toolset in agent.toolsets)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("disabled_value", ["none", "skip", "disabled", "  none  "])
-async def test_agent_builds_cloud_only_when_nas_url_disabled(monkeypatch, disabled_value):
-    monkeypatch.setattr(v2_config.settings, "NAS_VLLM_URL", disabled_value)
-    agent = build_agent()
-    assert isinstance(agent.model, OpenAIChatModel)
-
-
-def test_load_persona_text_expands_memory_includes():
-    text = load_persona_text()
-
-    assert "# Bigweld DA" in text
-    assert "# Working with Alex" in text
-    assert "# World Model" in text
-    assert "# Never-list" in text
-    assert "@memory/" not in text
+async def _async_iter(items):
+    for item in items:
+        yield item

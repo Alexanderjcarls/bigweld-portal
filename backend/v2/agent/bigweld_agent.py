@@ -1,16 +1,13 @@
-"""Pydantic AI Agent for Bigweld DA v2."""
+"""Claude Agent SDK client for Bigweld DA v2."""
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic_ai import Agent, RunContext
-from pydantic_ai.mcp import MCPServerStreamableHTTP
-from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from backend.v2.config import settings
 from backend.v2.retrieval.pipeline import run_pre_retrieval
@@ -18,11 +15,8 @@ from backend.v2.retrieval.pipeline import run_pre_retrieval
 
 @dataclass
 class BigweldDeps:
-    mcp_client: Any
-    pg_pool: Any
-    user_msg: str
-    last_assistant_msg: str | None
-    persona_text: str
+    conversation_id: str
+    persona_text: str | None = None
 
 
 def load_persona_text(persona_dir: Path | None = None) -> str:
@@ -46,49 +40,61 @@ def _expand_persona_includes(path: Path, persona_dir: Path) -> str:
 PERSONA_TEXT = load_persona_text()
 
 
-def build_agent() -> Agent[BigweldDeps]:
-    deepinfra_provider = OpenAIProvider(
-        base_url=settings.DEEPINFRA_BASE_URL,
-        api_key=settings.DEEPINFRA_API_KEY,
-    )
-    deepinfra_model = OpenAIChatModel(settings.MODEL_NAME, provider=deepinfra_provider)
-
-    nas_url = (settings.NAS_VLLM_URL or "").strip().lower()
-    if nas_url and nas_url not in ("none", "skip", "disabled"):
-        nas_provider = OpenAIProvider(
-            base_url=settings.NAS_VLLM_URL,
-            api_key="not-used",
-        )
-        nas_model = OpenAIChatModel(settings.MODEL_NAME, provider=nas_provider)
-        model = FallbackModel(nas_model, deepinfra_model)
-    else:
-        # Cloud-first: NAS vLLM not deployed yet; DeepInfra primary, no fallback.
-        # Phase 11b will swap NAS_VLLM_URL to point at the real NAS endpoint
-        # once vLLM 0.11.0 + Qwen3.6-35B-A3B is provisioned there.
-        model = deepinfra_model
-
-    mcp_server = MCPServerStreamableHTTP(settings.MCP_URL)
-
-    agent = Agent(
-        model=model,
-        toolsets=[mcp_server],
-        deps_type=BigweldDeps,
+def _build_options(deps: BigweldDeps, retrieved_context: str | None) -> ClaudeAgentOptions:
+    persona = deps.persona_text or PERSONA_TEXT
+    system_prompt = persona if not retrieved_context else f"{persona}\n\n{retrieved_context}"
+    return ClaudeAgentOptions(
+        model=settings.MODEL,
+        system_prompt=system_prompt,
+        mcp_servers={
+            "bigweld": {
+                "type": "http",
+                "url": settings.MCP_URL,
+            }
+        },
+        env={"ENABLE_TOOL_SEARCH": "true"},
     )
 
-    @agent.system_prompt(dynamic=True)
-    async def persona_with_retrieved_context(ctx: RunContext[BigweldDeps]) -> str:
-        # Merged into a single system_prompt because DeepInfra's Qwen endpoint
-        # rejects multiple system messages with "System message must be at the
-        # beginning." (verified 2026-04-30 against Qwen/Qwen3.6-35B-A3B).
-        persona = ctx.deps.persona_text or PERSONA_TEXT
-        retrieved = await run_pre_retrieval(
-            ctx.deps.user_msg,
-            ctx.deps.last_assistant_msg,
-            ctx.deps.mcp_client,
-            ctx.deps.pg_pool,
-        )
-        if retrieved:
-            return f"{persona}\n\n{retrieved}"
-        return persona
 
-    return agent
+async def stream_agent_response(
+    deps: BigweldDeps,
+    user_message: str,
+    message_history: list[dict],
+) -> AsyncIterator[dict]:
+    """
+    Yields raw Anthropic SDK message events as dicts.
+    Caller (chat.py) is responsible for translating to Vercel AI Data Stream Protocol.
+    """
+    retrieved = await run_pre_retrieval(user_message, deps.conversation_id)
+    options = _build_options(deps, retrieved)
+
+    async with ClaudeSDKClient(options=options) as client:
+        if message_history:
+            await client.query(_sdk_message_stream(message_history, user_message))
+        else:
+            await client.query(user_message)
+
+        async for event in client.receive_response():
+            yield event
+
+
+async def _sdk_message_stream(
+    message_history: list[dict],
+    user_message: str,
+) -> AsyncIterator[dict[str, Any]]:
+    for turn in message_history:
+        yield _sdk_input_message(turn)
+    yield _sdk_input_message({"role": "user", "content": user_message})
+
+
+def _sdk_input_message(turn: dict[str, Any]) -> dict[str, Any]:
+    role = turn.get("role") or "user"
+    content = turn.get("content", "")
+    return {
+        "type": role,
+        "message": {
+            "role": role,
+            "content": content,
+        },
+        "parent_tool_use_id": None,
+    }
