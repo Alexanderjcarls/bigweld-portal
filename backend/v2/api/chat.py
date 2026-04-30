@@ -27,21 +27,45 @@ router = APIRouter(tags=["chat"])
 async def chat(request: Request, pool: asyncpg.Pool = Depends(get_pool)):
     body = await request.json()
 
-    messages = body.get("messages", [])
-    if not messages:
-        raise HTTPException(400, "no messages")
+    # Frontend (frontend/src/v2/lib/api.ts buildChatRequestBody) sends:
+    #   { id, messages, trigger, messageId, conv_id, user_msg }
+    # Prefer the pre-extracted user_msg + conv_id fields from the frontend.
+    conv_raw = body.get("conv_id") or body.get("conversationId")
+    if not conv_raw:
+        # Fallback for any legacy callers that nest under data.conversationId
+        conv_raw = (body.get("data") or {}).get("conversationId")
+    if not conv_raw:
+        raise HTTPException(400, "conv_id required")
+    try:
+        conversation_id = UUID(conv_raw)
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"conv_id is not a valid UUID: {conv_raw}")
 
-    last_user = messages[-1]
-    user_text = _flatten_text_parts(last_user.get("parts", []) or last_user.get("content", []))
+    user_text = (body.get("user_msg") or "").strip()
+    if not user_text:
+        # Fallback: extract from the messages array
+        messages = body.get("messages", [])
+        if messages:
+            last_user = messages[-1]
+            user_text = _flatten_text_parts(
+                last_user.get("parts", []) or last_user.get("content", [])
+            )
     if not user_text:
         raise HTTPException(400, "empty user message")
 
-    body_data = body.get("data", {})
-    conversation_id = UUID(body_data["conversationId"]) if body_data.get("conversationId") else None
-    if not conversation_id:
-        raise HTTPException(400, "conversationId required")
-
     async with pool.acquire() as conn:
+        # Upsert the conversation row — frontend generates conv_id client-side
+        # and submits messages without a separate "create conversation" call.
+        await conn.execute(
+            """
+            INSERT INTO bigweld_v2.conversations (id, title)
+            VALUES ($1, $2)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            conversation_id,
+            user_text[:80] if user_text else "untitled",
+        )
+
         turn_count = await conn.fetchval(
             "SELECT COUNT(*) FROM bigweld_v2.messages WHERE conversation_id = $1",
             conversation_id,
@@ -59,7 +83,7 @@ async def chat(request: Request, pool: asyncpg.Pool = Depends(get_pool)):
         prior_history = await load_anthropic_messages(conn, conversation_id)
         prior_history = prior_history[:-1] if prior_history else []
 
-    deps = BigweldDeps(conversation_id=str(conversation_id))
+    deps = BigweldDeps(conversation_id=str(conversation_id), pg_pool=pool)
     translator = AnthropicToVercelTranslator(step_idx=turn_idx)
 
     assistant_blocks: list[dict | None] = []

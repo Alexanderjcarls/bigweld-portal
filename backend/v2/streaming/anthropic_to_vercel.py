@@ -140,17 +140,15 @@ class AnthropicToVercelTranslator:
             return []  # accumulate but don't emit until message_stop
 
         if et == "message_stop":
-            finish_reason = _map_stop_reason(self.last_stop_reason)
+            # Vercel AI SDK v6 protocol does NOT include `message-metadata` as a
+            # known part type — Zod validates against the part-type union and
+            # rejects unknown types. Token usage / finish reason are tracked
+            # server-side (chat.py persists into messages.usage/finish_reason)
+            # and exposed via the /api/context-stats endpoint that the context
+            # bar polls separately.
             return [
                 {"type": "finish-step"},
                 {"type": "finish"},
-                {
-                    "type": "message-metadata",
-                    "metadata": {
-                        "usage": self.last_usage,
-                        "finishReason": finish_reason,
-                    },
-                },
             ]
 
         if et == "ping":
