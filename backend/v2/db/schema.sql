@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE SCHEMA IF NOT EXISTS bigweld_v2;
 
@@ -14,19 +15,86 @@ ALTER TABLE bigweld_v2.conversations
   ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS bigweld_v2.messages (
-  id BIGSERIAL PRIMARY KEY,
-  conv_id UUID NOT NULL REFERENCES bigweld_v2.conversations(id) ON DELETE CASCADE,
-  turn_idx INT NOT NULL,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES bigweld_v2.conversations(id) ON DELETE CASCADE,
   role TEXT NOT NULL,
-  content TEXT,
   raw_message JSONB NOT NULL,
-  token_count INT,
-  ts TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (conv_id, turn_idx)
+  turn_idx INT NOT NULL,
+  token_count INT NOT NULL DEFAULT 0,
+  finish_reason TEXT,
+  usage JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (conversation_id, turn_idx)
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conv_turn
-  ON bigweld_v2.messages(conv_id, turn_idx);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'bigweld_v2'
+      AND table_name = 'messages'
+      AND column_name = 'conv_id'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'bigweld_v2'
+      AND table_name = 'messages'
+      AND column_name = 'conversation_id'
+  ) THEN
+    ALTER TABLE bigweld_v2.messages RENAME COLUMN conv_id TO conversation_id;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'bigweld_v2'
+      AND table_name = 'messages'
+      AND column_name = 'ts'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'bigweld_v2'
+      AND table_name = 'messages'
+      AND column_name = 'created_at'
+  ) THEN
+    ALTER TABLE bigweld_v2.messages RENAME COLUMN ts TO created_at;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'bigweld_v2'
+      AND table_name = 'messages'
+      AND column_name = 'id'
+      AND data_type <> 'uuid'
+  ) THEN
+    ALTER TABLE bigweld_v2.messages ALTER COLUMN id DROP DEFAULT;
+    ALTER TABLE bigweld_v2.messages ALTER COLUMN id TYPE UUID USING gen_random_uuid();
+  END IF;
+END $$;
+
+ALTER TABLE bigweld_v2.messages
+  ADD COLUMN IF NOT EXISTS finish_reason TEXT,
+  ADD COLUMN IF NOT EXISTS usage JSONB,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+ALTER TABLE bigweld_v2.messages
+  ALTER COLUMN id SET DEFAULT gen_random_uuid(),
+  ALTER COLUMN token_count SET DEFAULT 0;
+
+UPDATE bigweld_v2.messages SET token_count = 0 WHERE token_count IS NULL;
+
+ALTER TABLE bigweld_v2.messages
+  ALTER COLUMN token_count SET NOT NULL,
+  DROP COLUMN IF EXISTS content,
+  DROP COLUMN IF EXISTS conv_id,
+  DROP COLUMN IF EXISTS ts;
+
+DROP INDEX IF EXISTS bigweld_v2.idx_messages_conv_turn;
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_turn
+  ON bigweld_v2.messages(conversation_id, turn_idx);
 
 CREATE TABLE IF NOT EXISTS bigweld_v2.compacted_summaries (
   id BIGSERIAL PRIMARY KEY,

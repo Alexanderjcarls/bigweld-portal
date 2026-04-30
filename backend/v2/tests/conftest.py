@@ -12,3 +12,14 @@ async def pg_pool():
     pool = await asyncpg.create_pool(PG_URL, min_size=1, max_size=4)
     yield pool
     await pool.close()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def pg_conn(pg_pool):
+    async with pg_pool.acquire() as conn:
+        tx = conn.transaction()
+        await tx.start()
+        try:
+            yield conn
+        finally:
+            await tx.rollback()
