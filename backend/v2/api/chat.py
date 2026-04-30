@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from pydantic_ai.mcp import MCPServerStreamableHTTP
+from pydantic_ai.messages import ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart
 from pydantic_ai.ui import SSE_CONTENT_TYPE
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage, TextUIPart, UIMessage
@@ -54,7 +55,38 @@ async def chat(request: ChatRequest):
     )
 
     async def on_complete(result):
-        await append_messages(pg_pool, request.conv_id, [*adapter.messages, *result.new_messages()])
+        # Persist [user_request, assistant_response] for this turn.
+        # Filter out:
+        #   - System-only ModelRequests (dynamic @agent.system_prompt injections;
+        #     re-rendered per turn, must not be stored)
+        #   - The full message_history we loaded (otherwise we double-count)
+        # `adapter.messages` is just the new user UIMessage converted to a
+        # ModelRequest. `result.new_messages()` includes the full conversation
+        # graph the agent produced, including any injected system messages.
+        new_msgs = []
+        for msg in result.new_messages():
+            if isinstance(msg, ModelResponse):
+                new_msgs.append(msg)
+            elif isinstance(msg, ModelRequest):
+                if any(isinstance(p, UserPromptPart) for p in msg.parts):
+                    new_msgs.append(msg)
+                # System-only ModelRequests skipped — they're @system_prompt
+                # outputs, not durable conversation state.
+        # adapter.messages contains the canonical user UIMessage as a
+        # ModelRequest; only include it if our filter above didn't already
+        # capture an equivalent user message.
+        if not any(
+            isinstance(m, ModelRequest)
+            and any(isinstance(p, UserPromptPart) for p in m.parts)
+            for m in new_msgs
+        ):
+            for msg in adapter.messages:
+                if isinstance(msg, ModelRequest) and any(
+                    isinstance(p, UserPromptPart) for p in msg.parts
+                ):
+                    new_msgs.insert(0, msg)
+                    break
+        await append_messages(pg_pool, request.conv_id, new_msgs)
         await touch_conversation(pg_pool, request.conv_id)
 
     return adapter.streaming_response(
