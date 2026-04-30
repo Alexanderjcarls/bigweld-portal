@@ -6,8 +6,14 @@ import type {
   ArtifactType,
 } from "@/v2/stores/artifactsStore";
 
-export const DEFAULT_CHAT_API_URL = "http://localhost:8886/chat";
-export const DEFAULT_V2_API_BASE_URL = "http://localhost:8886";
+// Defaults are RELATIVE so the SPA hits whatever origin served it. Overrides
+// via VITE_BIGWELD_V2_CHAT_URL / VITE_BIGWELD_V2_API_URL are still honored
+// (useful for local dev when the FE runs on Vite's dev server and the BE
+// runs separately on :8886). Hardcoded `http://localhost:8886` URLs broke
+// the LAN-served deploy because the browser resolved `localhost` to the
+// client machine.
+export const DEFAULT_CHAT_API_URL = "/chat";
+export const DEFAULT_V2_API_BASE_URL = "";
 
 export function getChatApiUrl(): string {
   return import.meta.env.VITE_BIGWELD_V2_CHAT_URL ?? DEFAULT_CHAT_API_URL;
