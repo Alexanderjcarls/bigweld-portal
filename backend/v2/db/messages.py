@@ -143,10 +143,32 @@ async def total_token_count(pg_pool: asyncpg.Pool, conv_id: uuid.UUID) -> int:
 
 
 def model_messages_from_raw(raw_messages: Sequence[Any]) -> list[ModelMessage]:
-    """Reconstruct Pydantic AI message history from JSONB raw_message values."""
+    """Reconstruct Pydantic AI message history from JSONB raw_message values.
 
+    Defensive: strip SystemPromptPart entries from persisted ModelRequests on
+    the load path too. Pre-fix rows (persisted before the persistence-shape
+    fix in commit 9b95816) may have system-prompt-tagged-as-user content
+    that, on reconstruction, produces malformed message_history that the
+    Pydantic AI validator rejects with "Processed history must end with a
+    ModelRequest."
+
+    The system-prompt is re-rendered fresh per turn by the dynamic
+    @agent.system_prompt decorator, so dropping it from history is safe and
+    avoids the duplicate-system case (DeepInfra Qwen rejects multi-system).
+    """
     normalized = [_normalize_raw_message(raw) for raw in raw_messages]
-    return ModelMessagesTypeAdapter.validate_python(normalized)
+    cleaned = [_strip_system_parts_from_raw(raw) for raw in normalized]
+    # Also drop ModelRequests that had ONLY system parts — after stripping
+    # they'd have empty parts list, which the validator also rejects.
+    cleaned = [
+        raw for raw in cleaned
+        if not (
+            isinstance(raw, Mapping)
+            and raw.get("kind") == "request"
+            and not raw.get("parts")
+        )
+    ]
+    return ModelMessagesTypeAdapter.validate_python(cleaned)
 
 
 def _decode_raw_message(raw_message: Any) -> Any:
