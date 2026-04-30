@@ -1,111 +1,163 @@
 """Streaming chat endpoint for Bigweld DA v2."""
 
-import uuid
+from __future__ import annotations
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
-from pydantic_ai.mcp import MCPServerStreamableHTTP
-from pydantic_ai.messages import ModelRequest, ModelResponse, SystemPromptPart, UserPromptPart
-from pydantic_ai.ui import SSE_CONTENT_TYPE
-from pydantic_ai.ui.vercel_ai import VercelAIAdapter
-from pydantic_ai.ui.vercel_ai.request_types import SubmitMessage, TextUIPart, UIMessage
+import json
+from collections.abc import AsyncIterator
+from uuid import UUID
 
-from backend.v2.agent.bigweld_agent import BigweldDeps, build_agent, load_persona_text
-from backend.v2.config import settings
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from backend.v2.agent.bigweld_agent import BigweldDeps, stream_agent_response
 from backend.v2.db.connection import get_pool
-from backend.v2.db.conversations import get_or_create_conversation, touch_conversation
-from backend.v2.db.messages import append_messages, load_active_history, model_messages_from_raw
+from backend.v2.db.messages import load_anthropic_messages, persist_anthropic_message
+from backend.v2.streaming.anthropic_to_vercel import (
+    VERCEL_HEADER,
+    AnthropicToVercelTranslator,
+    stream_to_sse,
+)
 
 
 router = APIRouter(tags=["chat"])
-_agent = build_agent()
-PERSONA_TEXT = load_persona_text()
-
-
-class ChatRequest(BaseModel):
-    conv_id: uuid.UUID
-    user_msg: str = Field(min_length=1)
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
-    pg_pool = get_pool()
-    await get_or_create_conversation(pg_pool, request.conv_id)
+async def chat(request: Request, pool: asyncpg.Pool = Depends(get_pool)):
+    body = await request.json()
 
-    history_rows = await load_active_history(pg_pool, request.conv_id)
-    message_history_list = model_messages_from_raw([row["raw_message"] for row in history_rows])
-    # Pydantic AI's VercelAIAdapter expects None for empty history, not [].
-    message_history = message_history_list if message_history_list else None
-    last_assistant = next(
-        (row for row in reversed(history_rows) if row["role"] == "assistant"),
-        None,
-    )
+    messages = body.get("messages", [])
+    if not messages:
+        raise HTTPException(400, "no messages")
 
-    deps = BigweldDeps(
-        mcp_client=MCPServerStreamableHTTP(settings.MCP_URL),
-        pg_pool=pg_pool,
-        user_msg=request.user_msg,
-        last_assistant_msg=last_assistant["content"] if last_assistant else None,
-        persona_text=PERSONA_TEXT,
-    )
-    adapter = VercelAIAdapter(
-        agent=_agent,
-        run_input=_run_input_from_chat_request(request),
-        accept=SSE_CONTENT_TYPE,
-    )
+    last_user = messages[-1]
+    user_text = _flatten_text_parts(last_user.get("parts", []) or last_user.get("content", []))
+    if not user_text:
+        raise HTTPException(400, "empty user message")
 
-    async def on_complete(result):
-        # Persist [user_request, assistant_response] for this turn.
-        # Filter out:
-        #   - System-only ModelRequests (dynamic @agent.system_prompt injections;
-        #     re-rendered per turn, must not be stored)
-        #   - The full message_history we loaded (otherwise we double-count)
-        # `adapter.messages` is just the new user UIMessage converted to a
-        # ModelRequest. `result.new_messages()` includes the full conversation
-        # graph the agent produced, including any injected system messages.
-        new_msgs = []
-        for msg in result.new_messages():
-            if isinstance(msg, ModelResponse):
-                new_msgs.append(msg)
-            elif isinstance(msg, ModelRequest):
-                if any(isinstance(p, UserPromptPart) for p in msg.parts):
-                    new_msgs.append(msg)
-                # System-only ModelRequests skipped — they're @system_prompt
-                # outputs, not durable conversation state.
-        # adapter.messages contains the canonical user UIMessage as a
-        # ModelRequest; only include it if our filter above didn't already
-        # capture an equivalent user message.
-        if not any(
-            isinstance(m, ModelRequest)
-            and any(isinstance(p, UserPromptPart) for p in m.parts)
-            for m in new_msgs
-        ):
-            for msg in adapter.messages:
-                if isinstance(msg, ModelRequest) and any(
-                    isinstance(p, UserPromptPart) for p in msg.parts
-                ):
-                    new_msgs.insert(0, msg)
-                    break
-        await append_messages(pg_pool, request.conv_id, new_msgs)
-        await touch_conversation(pg_pool, request.conv_id)
+    body_data = body.get("data", {})
+    conversation_id = UUID(body_data["conversationId"]) if body_data.get("conversationId") else None
+    if not conversation_id:
+        raise HTTPException(400, "conversationId required")
 
-    return adapter.streaming_response(
-        adapter.run_stream(
-            message_history=message_history,
-            deps=deps,
-            on_complete=on_complete,
+    async with pool.acquire() as conn:
+        turn_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM bigweld_v2.messages WHERE conversation_id = $1",
+            conversation_id,
         )
-    )
+        turn_idx = turn_count
 
+        await persist_anthropic_message(
+            conn,
+            conversation_id,
+            "user",
+            [{"type": "text", "text": user_text}],
+            turn_idx=turn_idx,
+        )
 
-def _run_input_from_chat_request(request: ChatRequest) -> SubmitMessage:
-    return SubmitMessage(
-        id=str(request.conv_id),
-        messages=[
-            UIMessage(
-                id=str(uuid.uuid4()),
-                role="user",
-                parts=[TextUIPart(text=request.user_msg)],
+        prior_history = await load_anthropic_messages(conn, conversation_id)
+        prior_history = prior_history[:-1] if prior_history else []
+
+    deps = BigweldDeps(conversation_id=str(conversation_id))
+    translator = AnthropicToVercelTranslator(step_idx=turn_idx)
+
+    assistant_blocks: list[dict | None] = []
+    final_usage: dict | None = None
+    final_finish: str | None = None
+
+    async def event_stream() -> AsyncIterator[dict]:
+        nonlocal assistant_blocks, final_usage, final_finish
+        async for ev in stream_agent_response(deps, user_text, prior_history):
+            _accumulate_into_blocks(ev, assistant_blocks, translator)
+            yield ev
+            if ev.get("type") == "message_delta":
+                if ev.get("usage"):
+                    final_usage = ev["usage"]
+                if ev.get("delta", {}).get("stop_reason"):
+                    final_finish = ev["delta"]["stop_reason"]
+
+    async def sse_stream() -> AsyncIterator[bytes]:
+        async for chunk in stream_to_sse(event_stream(), translator):
+            yield chunk
+
+        async with pool.acquire() as conn:
+            await persist_anthropic_message(
+                conn,
+                conversation_id,
+                "assistant",
+                [block for block in assistant_blocks if block is not None],
+                turn_idx=turn_idx + 1,
+                token_count=(final_usage or {}).get("output_tokens", 0)
+                + (final_usage or {}).get("input_tokens", 0),
+                finish_reason=final_finish,
+                usage=final_usage,
             )
-        ],
+
+    return StreamingResponse(
+        sse_stream(),
+        media_type="text/event-stream",
+        headers={VERCEL_HEADER[0]: VERCEL_HEADER[1]},
     )
+
+
+def _flatten_text_parts(parts) -> str:
+    """Vercel UI parts list or content list -> concatenated text."""
+    if isinstance(parts, str):
+        return parts
+    out = []
+    for part in parts:
+        if isinstance(part, dict):
+            if part.get("type") == "text":
+                out.append(part.get("text", ""))
+            elif "text" in part:
+                out.append(part["text"])
+    return "".join(out)
+
+
+def _accumulate_into_blocks(
+    event: dict,
+    blocks: list[dict | None],
+    translator: AnthropicToVercelTranslator,
+):
+    """Mirror Anthropic events into content blocks for persistence."""
+    _ = translator
+    et = event.get("type")
+    if et == "content_block_start":
+        idx = event["index"]
+        cb = event["content_block"]
+        while len(blocks) <= idx:
+            blocks.append(None)
+        blocks[idx] = dict(cb)
+        if cb.get("type") == "text":
+            blocks[idx]["text"] = ""
+        elif cb.get("type") == "thinking":
+            blocks[idx]["thinking"] = ""
+        elif cb.get("type") == "tool_use":
+            blocks[idx]["_partial_input"] = ""
+    elif et == "content_block_delta":
+        idx = event["index"]
+        delta = event["delta"]
+        if idx >= len(blocks) or blocks[idx] is None:
+            return
+        block = blocks[idx]
+        dt = delta.get("type")
+        if dt == "text_delta":
+            block["text"] = (block.get("text") or "") + delta["text"]
+        elif dt == "thinking_delta":
+            block["thinking"] = (block.get("thinking") or "") + delta["thinking"]
+        elif dt == "input_json_delta":
+            block["_partial_input"] = (block.get("_partial_input") or "") + delta["partial_json"]
+        elif dt == "signature_delta":
+            block["signature"] = delta["signature"]
+    elif et == "content_block_stop":
+        idx = event["index"]
+        if idx >= len(blocks) or blocks[idx] is None:
+            return
+        block = blocks[idx]
+        if block.get("type") == "tool_use" and "_partial_input" in block:
+            try:
+                block["input"] = json.loads(block["_partial_input"]) if block["_partial_input"] else {}
+            except json.JSONDecodeError:
+                block["input"] = {}
+            del block["_partial_input"]

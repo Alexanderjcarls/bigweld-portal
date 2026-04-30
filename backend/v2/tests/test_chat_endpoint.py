@@ -1,17 +1,20 @@
+import json
 import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from pydantic_ai import Agent
-from pydantic_ai.models.test import TestModel
 
-from backend.v2.agent.bigweld_agent import BigweldDeps
 from backend.v2.api import chat as chat_api
 from backend.v2.main import app
+from backend.v2.streaming.anthropic_to_vercel import VERCEL_HEADER
+
+
+def _decode_raw(value):
+    return json.loads(value) if isinstance(value, str) else value
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_chat_endpoint_returns_sse(pg_pool, monkeypatch):
+async def test_chat_endpoint_streams_vercel_sse_and_persists_turns(pg_pool, monkeypatch):
     conv_id = uuid.uuid4()
     async with pg_pool.acquire() as conn:
         await conn.execute("DELETE FROM bigweld_v2.conversations WHERE id = $1", conv_id)
@@ -20,9 +23,32 @@ async def test_chat_endpoint_returns_sse(pg_pool, monkeypatch):
             conv_id,
         )
 
-    fake_agent = Agent(TestModel(custom_output_text="hello back"), deps_type=BigweldDeps)
-    monkeypatch.setattr(chat_api, "get_pool", lambda: pg_pool)
-    monkeypatch.setattr(chat_api, "_agent", fake_agent)
+    async def fake_stream_agent_response(deps, user_text, prior_history):
+        assert deps.conversation_id == str(conv_id)
+        assert user_text == "hello"
+        assert prior_history == []
+
+        yield {"type": "message_start", "message": {"id": "msg_test"}}
+        yield {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {"type": "text"},
+        }
+        yield {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": "hello back"},
+        }
+        yield {"type": "content_block_stop", "index": 0}
+        yield {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        yield {"type": "message_stop"}
+
+    monkeypatch.setattr(chat_api, "stream_agent_response", fake_stream_agent_response)
+    app.dependency_overrides[chat_api.get_pool] = lambda: pg_pool
 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -30,28 +56,50 @@ async def test_chat_endpoint_returns_sse(pg_pool, monkeypatch):
                 "POST",
                 "/chat",
                 json={
-                    "conv_id": str(conv_id),
-                    "user_msg": "hello",
+                    "messages": [
+                        {
+                            "id": "user-msg",
+                            "role": "user",
+                            "parts": [{"type": "text", "text": "hello"}],
+                        }
+                    ],
+                    "data": {"conversationId": str(conv_id)},
                 },
             ) as response:
                 assert response.status_code == 200
                 assert "text/event-stream" in response.headers["content-type"]
-                chunks = []
-                async for chunk in response.aiter_text():
-                    chunks.append(chunk)
+                assert response.headers[VERCEL_HEADER[0]] == VERCEL_HEADER[1]
+                body = "".join([chunk async for chunk in response.aiter_text()])
 
-        assert any("data:" in c for c in chunks)
+        assert '"type": "text-delta"' in body
+        assert '"delta": "hello back"' in body
+        assert '"type": "finish"' in body
+        assert body.endswith("data: [DONE]\n\n")
 
         async with pg_pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT role, content, raw_message FROM bigweld_v2.messages "
-                "WHERE conv_id = $1 ORDER BY turn_idx",
+                """
+                SELECT role, raw_message, token_count, finish_reason, usage
+                FROM bigweld_v2.messages
+                WHERE conversation_id = $1
+                ORDER BY turn_idx
+                """,
                 conv_id,
             )
 
         assert [row["role"] for row in rows] == ["user", "assistant"]
-        assert "hello" in rows[0]["content"]
-        assert "hello back" in rows[1]["content"]
+        assert _decode_raw(rows[0]["raw_message"]) == {
+            "role": "user",
+            "content": [{"type": "text", "text": "hello"}],
+        }
+        assert _decode_raw(rows[1]["raw_message"]) == {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "hello back"}],
+        }
+        assert rows[1]["token_count"] == 15
+        assert rows[1]["finish_reason"] == "end_turn"
+        assert _decode_raw(rows[1]["usage"]) == {"input_tokens": 10, "output_tokens": 5}
     finally:
+        app.dependency_overrides.pop(chat_api.get_pool, None)
         async with pg_pool.acquire() as conn:
             await conn.execute("DELETE FROM bigweld_v2.conversations WHERE id = $1", conv_id)

@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import pytest
@@ -169,11 +170,16 @@ async def test_artifact_multipart_drop_creates_artifact_and_system_message(pg_po
 
         async with pg_pool.acquire() as conn:
             message = await conn.fetchrow(
-                "SELECT role, content FROM bigweld_v2.messages "
-                "WHERE conv_id = $1 ORDER BY turn_idx DESC LIMIT 1",
+                "SELECT role, raw_message FROM bigweld_v2.messages "
+                "WHERE conversation_id = $1 ORDER BY turn_idx DESC LIMIT 1",
                 conv_id,
             )
         assert message["role"] == "system"
-        assert message["content"] == "user dropped: drop.md"
+        raw_message = (
+            json.loads(message["raw_message"])
+            if isinstance(message["raw_message"], str)
+            else message["raw_message"]
+        )
+        assert raw_message["content"] == [{"type": "text", "text": "user dropped: drop.md"}]
     finally:
         await _delete_conversation(pg_pool, conv_id)

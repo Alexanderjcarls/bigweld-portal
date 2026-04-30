@@ -17,22 +17,22 @@ async def _seed_context_stats_conversation(pg_pool, conv_id: uuid.UUID) -> None:
             "Token stats fixture",
         )
         rows = [
-            (0, "user", "Pre-compact user turn.", 2000),
+            (0, "user", "Pre-compact user turn.", 0),
             (1, "assistant", "Pre-compact assistant turn.", 3000),
-            (2, "user", "Active user turn.", 12000),
+            (2, "user", "Active user turn.", 0),
+            (3, "assistant", "Active assistant turn.", 12000),
         ]
         for turn_idx, role, content, token_count in rows:
             await conn.execute(
                 """
                 INSERT INTO bigweld_v2.messages
-                    (conv_id, turn_idx, role, content, raw_message, token_count)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                    (conversation_id, turn_idx, role, raw_message, token_count)
+                VALUES ($1, $2, $3, $4::jsonb, $5)
                 """,
                 conv_id,
                 turn_idx,
                 role,
-                content,
-                json.dumps({"role": role, "content": content}),
+                json.dumps({"role": role, "content": [{"type": "text", "text": content}]}),
                 token_count,
             )
         await conn.execute(
@@ -51,7 +51,10 @@ async def _delete_conversation(pg_pool, conv_id: uuid.UUID) -> None:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_context_stats_returns_active_token_count_and_percentage(pg_pool, monkeypatch):
+async def test_context_stats_returns_one_million_budget_and_both_name_shapes(
+    pg_pool,
+    monkeypatch,
+):
     conv_id = uuid.uuid4()
     await _seed_context_stats_conversation(pg_pool, conv_id)
     monkeypatch.setattr(context_stats_api, "get_pool", lambda: pg_pool)
@@ -64,32 +67,11 @@ async def test_context_stats_returns_active_token_count_and_percentage(pg_pool, 
         assert response.json() == {
             "conv_id": str(conv_id),
             "tokens_used": 12000,
-            "token_limit": 50000,
-            "percent_used": 24.0,
+            "token_limit": 1_000_000,
+            "percent_used": 1.2,
             "token_count": 12000,
-            "context_budget": 50000,
-            "percentage": 24.0,
+            "context_budget": 1_000_000,
+            "percentage": 1.2,
         }
-    finally:
-        await _delete_conversation(pg_pool, conv_id)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_context_stats_allows_budget_override(pg_pool, monkeypatch):
-    conv_id = uuid.uuid4()
-    await _seed_context_stats_conversation(pg_pool, conv_id)
-    monkeypatch.setattr(context_stats_api, "get_pool", lambda: pg_pool)
-
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.get(
-                f"/api/context-stats?conv_id={conv_id}&context_budget=24000"
-            )
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["token_count"] == 12000
-        assert body["context_budget"] == 24000
-        assert body["percentage"] == 50.0
     finally:
         await _delete_conversation(pg_pool, conv_id)

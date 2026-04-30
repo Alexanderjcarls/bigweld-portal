@@ -48,14 +48,13 @@ async def seeded_conversations(pg_pool):
             await conn.execute(
                 """
                 INSERT INTO bigweld_v2.messages
-                    (conv_id, turn_idx, role, content, raw_message, token_count)
-                VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                    (conversation_id, turn_idx, role, raw_message, token_count)
+                VALUES ($1, $2, $3, $4::jsonb, $5)
                 """,
                 conv_id,
                 turn_idx,
                 role,
-                content,
-                json.dumps({"role": role, "content": content}),
+                json.dumps({"role": role, "content": [{"type": "text", "text": content}]}),
                 token_count,
             )
 
@@ -149,8 +148,9 @@ async def test_get_conversation_returns_messages_and_compacted_summaries(
     assert [message["turn_idx"] for message in body["messages"]] == [0, 1, 2]
     assert body["messages"][0]["raw_message"] == {
         "role": "user",
-        "content": "Scope the context stats endpoint.",
+        "content": [{"type": "text", "text": "Scope the context stats endpoint."}],
     }
+    assert body["messages"][0]["content"] == "Scope the context stats endpoint."
     assert len(body["compacted_summaries"]) == 1
     assert body["compacted_summaries"][0]["range_start_idx"] == 0
     assert body["compacted_summaries"][0]["range_end_idx"] == 1

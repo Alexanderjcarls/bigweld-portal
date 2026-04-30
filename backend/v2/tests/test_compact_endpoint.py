@@ -19,13 +19,12 @@ async def _seed_messages(pg_pool, conv_id: uuid.UUID) -> None:
         for turn_idx, role, content in rows:
             await conn.execute(
                 "INSERT INTO bigweld_v2.messages "
-                "(conv_id, turn_idx, role, content, raw_message, token_count) "
-                "VALUES ($1, $2, $3, $4, $5::jsonb, $6)",
+                "(conversation_id, turn_idx, role, raw_message, token_count) "
+                "VALUES ($1, $2, $3, $4::jsonb, $5)",
                 conv_id,
                 turn_idx,
                 role,
-                content,
-                json.dumps({"role": role, "content": content}),
+                json.dumps({"role": role, "content": [{"type": "text", "text": content}]}),
                 8,
             )
 
@@ -120,7 +119,7 @@ async def test_compact_confirm_embeds_and_persists_summary_without_modifying_mes
                 body["summary_id"],
             )
             message_count = await conn.fetchval(
-                "SELECT COUNT(*) FROM bigweld_v2.messages WHERE conv_id = $1",
+                "SELECT COUNT(*) FROM bigweld_v2.messages WHERE conversation_id = $1",
                 conv_id,
             )
 

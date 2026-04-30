@@ -29,18 +29,21 @@ async def test_messages_table_shape(pg_pool):
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema='bigweld_v2' AND table_name='messages' "
             "ORDER BY ordinal_position"
-        )
+    )
     names = [c["column_name"] for c in cols]
-    assert names == [
+    assert set(names) == {
         "id",
-        "conv_id",
+        "conversation_id",
         "turn_idx",
         "role",
-        "content",
         "raw_message",
         "token_count",
-        "ts",
-    ]
+        "finish_reason",
+        "usage",
+        "created_at",
+    }
+    assert "conv_id" not in names
+    assert "content" not in names
 
 
 @pytest.mark.asyncio(loop_scope="session")
