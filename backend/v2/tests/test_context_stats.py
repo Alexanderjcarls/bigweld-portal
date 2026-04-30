@@ -63,6 +63,9 @@ async def test_context_stats_returns_active_token_count_and_percentage(pg_pool, 
         assert response.status_code == 200
         assert response.json() == {
             "conv_id": str(conv_id),
+            "tokens_used": 12000,
+            "token_limit": 50000,
+            "percent_used": 24.0,
             "token_count": 12000,
             "context_budget": 50000,
             "percentage": 24.0,

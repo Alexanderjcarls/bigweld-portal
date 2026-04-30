@@ -124,7 +124,21 @@ async def append_messages(
 
 
 async def total_token_count(pg_pool: asyncpg.Pool, conv_id: uuid.UUID) -> int:
-    """Sum token_count across active range (post-most-recent-Compact)."""
+    """Return the size of the LATEST request context (not the cumulative sum).
+
+    Pydantic AI's ModelResponse stores total_tokens (= prompt + completion) in
+    `usage.total_tokens` for each LLM call. Summing across calls double-counts:
+    the prompt of call N includes the entire history up through call N-1, so
+    a sum of three N=15K calls overstates the "current context size" 3×.
+
+    The right metric for the context bar is: how big was the LAST prompt sent
+    to the model, plus the completion that came back? That's the size that
+    will fill the context window for the NEXT turn.
+
+    We approximate this with `MAX(token_count)` over the active range — for a
+    well-formed conversation, the last assistant turn's row carries the
+    largest total_tokens (most prompt context + its own response).
+    """
 
     async with pg_pool.acquire() as conn:
         latest_compact = await conn.fetchrow(
@@ -134,7 +148,7 @@ async def total_token_count(pg_pool: asyncpg.Pool, conv_id: uuid.UUID) -> int:
         )
         cutoff = latest_compact["range_end_idx"] if latest_compact else -1
         result = await conn.fetchval(
-            "SELECT COALESCE(SUM(token_count), 0) FROM bigweld_v2.messages "
+            "SELECT COALESCE(MAX(token_count), 0) FROM bigweld_v2.messages "
             "WHERE conv_id = $1 AND turn_idx > $2",
             conv_id,
             cutoff,

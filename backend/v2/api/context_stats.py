@@ -26,8 +26,14 @@ async def get_context_stats(
 
     token_count = await total_token_count(get_pool(), conv_id)
     percentage = min(100.0, round((token_count / context_budget) * 100.0, 2))
+    # Emit BOTH the snake_case frontend-expected names AND the original names.
+    # Frontend's normalizeContextStats reads tokens_used / token_limit /
+    # percent_used; legacy aliases remain for any external readers.
     return {
         "conv_id": str(conv_id),
+        "tokens_used": token_count,
+        "token_limit": context_budget,
+        "percent_used": percentage,
         "token_count": token_count,
         "context_budget": context_budget,
         "percentage": percentage,
