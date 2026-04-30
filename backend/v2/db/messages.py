@@ -72,6 +72,27 @@ async def load_active_history(pg_pool: asyncpg.Pool, conv_id: uuid.UUID) -> list
     return history
 
 
+async def fetch_conversation_messages(
+    pg_pool: asyncpg.Pool,
+    conv_id: uuid.UUID,
+) -> list[dict[str, Any]]:
+    """Return every persisted message row for portal hydration."""
+
+    async with pg_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, turn_idx, role, content, raw_message, token_count, ts "
+            "FROM bigweld_v2.messages WHERE conv_id = $1 ORDER BY turn_idx ASC",
+            conv_id,
+        )
+
+    messages: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["raw_message"] = _decode_raw_message(item["raw_message"])
+        messages.append(item)
+    return messages
+
+
 async def append_messages(
     pg_pool: asyncpg.Pool,
     conv_id: uuid.UUID,

@@ -19,7 +19,7 @@ async def test_conversations_table_shape(pg_pool):
             "ORDER BY ordinal_position"
         )
     names = [c["column_name"] for c in cols]
-    assert names == ["id", "title", "started_at", "last_active_at"]
+    assert names == ["id", "title", "started_at", "last_active_at", "archived"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

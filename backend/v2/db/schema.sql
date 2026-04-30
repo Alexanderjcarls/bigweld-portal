@@ -6,8 +6,12 @@ CREATE TABLE IF NOT EXISTS bigweld_v2.conversations (
   id UUID PRIMARY KEY,
   title TEXT,
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_active_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  last_active_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived BOOLEAN NOT NULL DEFAULT false
 );
+
+ALTER TABLE bigweld_v2.conversations
+  ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS bigweld_v2.messages (
   id BIGSERIAL PRIMARY KEY,
