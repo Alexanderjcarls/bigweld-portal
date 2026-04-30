@@ -183,6 +183,7 @@ def _normalize_raw_message(raw_message: Any) -> Any:
 def _message_record(message: ModelMessage | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(message, Mapping):
         raw_message = _normalize_raw_message(message.get("raw_message", message))
+        raw_message = _strip_system_parts_from_raw(raw_message)
         return {
             "role": message.get("role") or _role_from_raw(raw_message),
             "content": message.get("content") or _content_from_raw(raw_message),
@@ -190,13 +191,57 @@ def _message_record(message: ModelMessage | Mapping[str, Any]) -> dict[str, Any]
             "token_count": message.get("token_count"),
         }
 
-    raw_message = ModelMessagesTypeAdapter.dump_python([message], mode="json")[0]
+    # Strip SystemPromptPart before persistence: dynamic @agent.system_prompt
+    # decorators re-inject the system message per turn. Persisting it would
+    # duplicate it into next turn's message_history → DeepInfra Qwen would
+    # reject the resulting multi-system request with HTTP 400.
+    persisted_message = _strip_system_parts(message)
+    raw_message = ModelMessagesTypeAdapter.dump_python([persisted_message], mode="json")[0]
     return {
-        "role": _message_role(message),
-        "content": _message_content(message),
+        "role": _message_role(persisted_message),
+        "content": _message_content(persisted_message),
         "raw_message": raw_message,
-        "token_count": _message_token_count(message),
+        "token_count": _message_token_count(persisted_message),
     }
+
+
+def _strip_system_parts(message: ModelMessage) -> ModelMessage:
+    """Return a copy of `message` with SystemPromptPart entries removed.
+
+    Used before persistence so the durable conversation log doesn't contain
+    dynamic system prompts that get re-rendered on reconstruction.
+    """
+    import dataclasses
+
+    if not isinstance(message, ModelRequest):
+        return message
+    filtered_parts = [p for p in message.parts if not isinstance(p, SystemPromptPart)]
+    if len(filtered_parts) == len(message.parts):
+        return message  # no system parts to strip; cheap fast-path
+    return dataclasses.replace(message, parts=filtered_parts)
+
+
+def _strip_system_parts_from_raw(raw_message: Any) -> Any:
+    """Mirror of `_strip_system_parts` for raw JSON dicts loaded from DB."""
+    if not isinstance(raw_message, Mapping):
+        return raw_message
+    if raw_message.get("kind") != "request":
+        return raw_message
+    parts = raw_message.get("parts")
+    if not isinstance(parts, list):
+        return raw_message
+    filtered = [p for p in parts if not _raw_part_is_system(p)]
+    if len(filtered) == len(parts):
+        return raw_message
+    cleaned = dict(raw_message)
+    cleaned["parts"] = filtered
+    return cleaned
+
+
+def _raw_part_is_system(part: Any) -> bool:
+    if not isinstance(part, Mapping):
+        return False
+    return part.get("part_kind") == "system-prompt"
 
 
 def _message_role(message: ModelMessage) -> str:
@@ -216,10 +261,13 @@ def _message_role(message: ModelMessage) -> str:
 
 def _message_content(message: ModelMessage) -> str | None:
     if isinstance(message, ModelRequest):
+        # Defense in depth: even if a SystemPromptPart sneaks past the strip
+        # at _message_record (e.g. for legacy rows), don't include it in the
+        # human-readable `content` column.
         return _join_content(
             _stringify_part_content(part.content)
             for part in message.parts
-            if isinstance(part, UserPromptPart | SystemPromptPart | ToolReturnPart)
+            if isinstance(part, (UserPromptPart, ToolReturnPart))
         )
 
     if isinstance(message, ModelResponse):
