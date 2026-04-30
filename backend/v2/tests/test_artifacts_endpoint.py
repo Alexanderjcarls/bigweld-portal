@@ -141,3 +141,39 @@ async def test_artifact_create_requires_body_or_files(pg_pool, monkeypatch):
         assert response.status_code == 422
     finally:
         await _delete_conversation(pg_pool, conv_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_artifact_multipart_drop_creates_artifact_and_system_message(pg_pool, monkeypatch):
+    conv_id = uuid.uuid4()
+    await _seed_conversation(pg_pool, conv_id)
+    monkeypatch.setattr(artifacts_api, "get_pool", lambda: pg_pool)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/api/artifacts",
+                data={
+                    "conv_id": str(conv_id),
+                    "type": "markdown",
+                    "title": "drop.md",
+                    "source": "user_dropped",
+                },
+                files={"file": ("drop.md", b"# Dropped\n", "text/markdown")},
+            )
+
+            assert response.status_code == 201
+            artifact = response.json()
+            assert artifact["title"] == "drop.md"
+            assert artifact["body"] == "# Dropped\n"
+
+        async with pg_pool.acquire() as conn:
+            message = await conn.fetchrow(
+                "SELECT role, content FROM bigweld_v2.messages "
+                "WHERE conv_id = $1 ORDER BY turn_idx DESC LIMIT 1",
+                conv_id,
+            )
+        assert message["role"] == "system"
+        assert message["content"] == "user dropped: drop.md"
+    finally:
+        await _delete_conversation(pg_pool, conv_id)

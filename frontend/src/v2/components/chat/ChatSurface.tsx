@@ -6,7 +6,14 @@ import {
   type UIMessagePart,
   type UITools,
 } from "ai";
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+} from "react";
 import {
   Conversation,
   ConversationContent,
@@ -20,7 +27,9 @@ import {
   PromptInputTools,
 } from "@/v2/components/ai-elements/prompt-input";
 import { useChat } from "@/v2/hooks/useChat";
+import { useCreateDroppedArtifact, useOpenArtifactReference } from "@/v2/hooks/useArtifacts";
 import { useChatStore } from "@/v2/stores/chatStore";
+import { useArtifactsStore } from "@/v2/stores/artifactsStore";
 import { TextMessage } from "@/v2/components/chat/Message";
 import { Reasoning } from "@/v2/components/chat/Reasoning";
 import { ToolCall } from "@/v2/components/chat/ToolCall";
@@ -30,6 +39,7 @@ import {
   BusyIndicator,
 } from "@/v2/components/chat/BusyIndicator";
 import { dispatchContextStatsChatEvent } from "@/v2/hooks/useContextStats";
+import { extractArtifactReferences } from "@/v2/lib/artifact-references";
 
 export function ChatSurface() {
   const [input, setInput] = useState("");
@@ -40,6 +50,11 @@ export function ChatSurface() {
   const hydratedConversationId = useChatStore((state) => state.hydratedConversationId);
   const hydratedMessages = useChatStore((state) => state.hydratedMessages);
   const clearHydratedConversation = useChatStore((state) => state.clearHydratedConversation);
+  const closeSidecar = useArtifactsStore((state) => state.closeSidecar);
+  const revealDropZone = useArtifactsStore((state) => state.revealDropZone);
+  const openArtifactReference = useOpenArtifactReference();
+  const droppedArtifact = useCreateDroppedArtifact(conversationId);
+  const lastAutoOpenedReference = useRef<string | null>(null);
   const { messages, setMessages, sendMessage, status, error, stop } = useChat({
     onToolCall: ({ toolCall }) => {
       setActivityTag(activityTagFromToolCall(toolCall));
@@ -70,6 +85,16 @@ export function ChatSurface() {
     dispatchContextStatsChatEvent();
   }, [messages.length, setMessageCount]);
 
+  useEffect(() => {
+    const reference = latestArtifactReference(messages);
+    if (!reference || reference === lastAutoOpenedReference.current) return;
+
+    lastAutoOpenedReference.current = reference;
+    openArtifactReference(reference).catch((openError: unknown) => {
+      console.error("Failed to auto-open artifact reference:", openError);
+    });
+  }, [messages, openArtifactReference]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -81,6 +106,12 @@ export function ChatSurface() {
     const text = input.trim();
     if (!text || status === "submitted") return;
 
+    if (isArtifactCloseCommand(text)) {
+      closeSidecar();
+      setInput("");
+      return;
+    }
+
     setLastSubmittedText(text);
     setInput("");
     sendMessage({ text }).catch((sendError: unknown) => {
@@ -88,10 +119,31 @@ export function ChatSurface() {
     });
   };
 
+  const handleDragEnter = (event: DragEvent<HTMLElement>) => {
+    if (!eventHasFiles(event)) return;
+    event.preventDefault();
+    revealDropZone();
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLElement>) => {
+    if (!eventHasFiles(event)) return;
+    event.preventDefault();
+  };
+
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
+    if (!eventHasFiles(event)) return;
+    event.preventDefault();
+    const [file] = Array.from(event.dataTransfer.files);
+    if (file) droppedArtifact.mutate(file);
+  };
+
   return (
     <section
       className="flex h-full min-h-0 flex-col bg-background text-foreground"
       data-testid="chat-surface"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
     >
       <Conversation className="min-h-0">
         <ConversationContent className="space-y-4">
@@ -229,4 +281,66 @@ function latestActivityTag(messages: UIMessage[]): string | null {
   }
 
   return null;
+}
+
+function latestArtifactReference(messages: UIMessage[]): string | null {
+  for (const message of [...messages].reverse()) {
+    for (const part of [...message.parts].reverse()) {
+      const reference = artifactReferenceFromPart(part);
+      if (reference) return reference;
+    }
+  }
+
+  return null;
+}
+
+function artifactReferenceFromPart(
+  part: UIMessagePart<UIDataTypes, UITools>,
+): string | null {
+  if (part.type === "text") {
+    return extractArtifactReferences(part.text).at(-1) ?? null;
+  }
+
+  if (isToolUIPart(part) && part.state === "output-available") {
+    return artifactReferenceFromValue(part.output);
+  }
+
+  return artifactReferenceFromValue(part);
+}
+
+function artifactReferenceFromValue(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+
+  for (const key of ["artifact_id", "artifactId", "id", "slug"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && isArtifactLikeRecord(record)) {
+      return candidate;
+    }
+  }
+
+  const artifact = record.artifact;
+  if (artifact && typeof artifact === "object" && !Array.isArray(artifact)) {
+    return artifactReferenceFromValue(artifact);
+  }
+
+  return null;
+}
+
+function isArtifactLikeRecord(record: Record<string, unknown>): boolean {
+  return (
+    record.kind === "artifact" ||
+    record.type === "artifact" ||
+    record.event === "artifact_created" ||
+    "artifact_id" in record ||
+    "artifactId" in record
+  );
+}
+
+function isArtifactCloseCommand(text: string): boolean {
+  return /^(close|dismiss)(\s+(artifact|sidecar|artifacts))?\.?$/i.test(text.trim());
+}
+
+function eventHasFiles(event: DragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
 }
