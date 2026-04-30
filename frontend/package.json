@@ -11,15 +11,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.173",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@tanstack/react-query": "^5.100.5",
     "@terrastruct/d2": "^0.1.33",
     "@tiptap/extension-mention": "^3.22.4",
     "@tiptap/react": "^3.22.4",
     "@tiptap/starter-kit": "^3.22.4",
     "@tiptap/suggestion": "^3.22.4",
+    "ai": "^6.0.171",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.1",
+    "embla-carousel-react": "^8.6.0",
     "lucide-react": "^1.11.0",
     "mermaid": "^11.14.0",
     "motion": "^12.38.0",
@@ -27,8 +31,10 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-resizable-panels": "^4.10.0",
+    "react-syntax-highlighter": "^16.1.1",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.5.0",
+    "use-stick-to-bottom": "^1.1.4",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
@@ -41,6 +47,7 @@
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
