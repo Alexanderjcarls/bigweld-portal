@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatSurface } from "@/v2/components/chat/ChatSurface";
 import { useChatStore } from "@/v2/stores/chatStore";
+import { renderWithProviders } from "./test-utils";
 
 const encoder = new TextEncoder();
 
@@ -33,7 +34,7 @@ describe("v2 ChatSurface", () => {
       }),
     );
 
-    render(<ChatSurface />);
+    renderWithProviders(<ChatSurface />);
 
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "fake message" },

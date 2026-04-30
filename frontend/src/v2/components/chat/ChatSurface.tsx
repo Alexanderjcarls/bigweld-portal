@@ -1,19 +1,17 @@
 import {
+  getToolName,
   isToolUIPart,
   type UIDataTypes,
   type UIMessage,
   type UIMessagePart,
   type UITools,
 } from "ai";
-import { RotateCcwIcon } from "lucide-react";
-import { useState, type ChangeEvent, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
 } from "@/v2/components/ai-elements/conversation";
-import { Loader } from "@/v2/components/ai-elements/loader";
 import {
   PromptInput,
   PromptInputSubmit,
@@ -26,13 +24,51 @@ import { useChatStore } from "@/v2/stores/chatStore";
 import { TextMessage } from "@/v2/components/chat/Message";
 import { Reasoning } from "@/v2/components/chat/Reasoning";
 import { ToolCall } from "@/v2/components/chat/ToolCall";
+import {
+  activityTagFromEvent,
+  activityTagFromToolCall,
+  BusyIndicator,
+} from "@/v2/components/chat/BusyIndicator";
+import { dispatchContextStatsChatEvent } from "@/v2/hooks/useContextStats";
 
 export function ChatSurface() {
   const [input, setInput] = useState("");
+  const [activityTag, setActivityTag] = useState("working");
+  const conversationId = useChatStore((state) => state.conversationId);
   const setLastSubmittedText = useChatStore((state) => state.setLastSubmittedText);
-  const resetConversation = useChatStore((state) => state.resetConversation);
-  const { messages, sendMessage, status, error, stop } = useChat();
+  const setMessageCount = useChatStore((state) => state.setMessageCount);
+  const hydratedConversationId = useChatStore((state) => state.hydratedConversationId);
+  const hydratedMessages = useChatStore((state) => state.hydratedMessages);
+  const clearHydratedConversation = useChatStore((state) => state.clearHydratedConversation);
+  const { messages, setMessages, sendMessage, status, error, stop } = useChat({
+    onToolCall: ({ toolCall }) => {
+      setActivityTag(activityTagFromToolCall(toolCall));
+    },
+    onFinish: () => {
+      dispatchContextStatsChatEvent();
+      setActivityTag("working");
+    },
+  });
   const isBusy = status === "submitted" || status === "streaming";
+  const busyTag = latestActivityTag(messages) ?? activityTag;
+
+  useEffect(() => {
+    if (hydratedConversationId !== conversationId || !hydratedMessages) return;
+
+    setMessages(hydratedMessages);
+    clearHydratedConversation();
+  }, [
+    clearHydratedConversation,
+    conversationId,
+    hydratedConversationId,
+    hydratedMessages,
+    setMessages,
+  ]);
+
+  useEffect(() => {
+    setMessageCount(messages.length);
+    dispatchContextStatsChatEvent();
+  }, [messages.length, setMessageCount]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -53,22 +89,10 @@ export function ChatSurface() {
   };
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">Bigweld DA v2</h1>
-        </div>
-        <Button
-          aria-label="Start new conversation"
-          onClick={resetConversation}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <RotateCcwIcon className="size-4" />
-        </Button>
-      </header>
-
+    <section
+      className="flex h-full min-h-0 flex-col bg-background text-foreground"
+      data-testid="chat-surface"
+    >
       <Conversation className="min-h-0">
         <ConversationContent className="space-y-4">
           {messages.length === 0 && (
@@ -84,7 +108,7 @@ export function ChatSurface() {
               status={status}
             />
           ))}
-          {status === "submitted" && <Loader />}
+          {isBusy && <BusyIndicator activity={busyTag} />}
           {error && (
             <div
               className="mx-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm"
@@ -110,7 +134,7 @@ export function ChatSurface() {
             <PromptInputTools>
               {isBusy && (
                 <span className="px-2 text-muted-foreground text-xs">
-                  {status === "submitted" ? "Connecting" : "Streaming"}
+                  {busyTag}
                 </span>
               )}
             </PromptInputTools>
@@ -183,6 +207,25 @@ function MessagePart({
         <ToolCall part={part} />
       </div>
     );
+  }
+
+  return null;
+}
+
+function latestActivityTag(messages: UIMessage[]): string | null {
+  const lastMessage = messages.at(-1);
+  if (!lastMessage || lastMessage.role !== "assistant") return null;
+
+  for (const part of [...lastMessage.parts].reverse()) {
+    if (part.type === "reasoning") return "thinking";
+    if (isToolUIPart(part)) {
+      const input = "input" in part ? part.input : undefined;
+      return activityTagFromEvent({
+        type: "tool",
+        toolName: getToolName(part),
+        input,
+      });
+    }
   }
 
   return null;

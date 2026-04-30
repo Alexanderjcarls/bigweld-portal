@@ -1,27 +1,53 @@
 import { create } from "zustand";
+import type { UIMessage } from "ai";
 
 const STORAGE_KEY = "bigweld-v2-conversation-id";
 
 interface ChatState {
   conversationId: string;
   lastSubmittedText: string;
+  messageCount: number;
+  hydratedConversationId: string | null;
+  hydratedMessages: UIMessage[] | null;
   setConversationId: (conversationId: string) => void;
   setLastSubmittedText: (text: string) => void;
+  setMessageCount: (messageCount: number) => void;
+  hydrateConversation: (conversationId: string, messages: UIMessage[]) => void;
+  clearHydratedConversation: () => void;
   resetConversation: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   conversationId: readConversationId(),
   lastSubmittedText: "",
+  messageCount: 0,
+  hydratedConversationId: null,
+  hydratedMessages: null,
   setConversationId: (conversationId) => {
     writeConversationId(conversationId);
     set({ conversationId });
   },
   setLastSubmittedText: (lastSubmittedText) => set({ lastSubmittedText }),
+  setMessageCount: (messageCount) => set({ messageCount }),
+  hydrateConversation: (conversationId, messages) =>
+    set({
+      conversationId,
+      hydratedConversationId: conversationId,
+      hydratedMessages: messages,
+      messageCount: messages.length,
+    }),
+  clearHydratedConversation: () =>
+    set({ hydratedConversationId: null, hydratedMessages: null }),
   resetConversation: () => {
     const conversationId = createConversationId();
     writeConversationId(conversationId);
-    set({ conversationId, lastSubmittedText: "" });
+    set({
+      conversationId,
+      lastSubmittedText: "",
+      messageCount: 0,
+      hydratedConversationId: null,
+      hydratedMessages: null,
+    });
   },
 }));
 

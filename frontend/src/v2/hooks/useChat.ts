@@ -1,10 +1,15 @@
-import { useChat as useAiChat, type UseChatOptions } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { useChat as useAiChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type ChatInit, type UIMessage } from "ai";
 import { useMemo } from "react";
 import { buildChatRequestBody, getChatApiUrl } from "@/v2/lib/api";
 import { useChatStore } from "@/v2/stores/chatStore";
 
-export function useChat(options: Omit<UseChatOptions<UIMessage>, "id" | "transport"> = {}) {
+type V2UseChatOptions = Omit<ChatInit<UIMessage>, "id" | "transport"> & {
+  experimental_throttle?: number;
+  resume?: boolean;
+};
+
+export function useChat(options: V2UseChatOptions = {}) {
   const conversationId = useChatStore((state) => state.conversationId);
 
   const transport = useMemo(
