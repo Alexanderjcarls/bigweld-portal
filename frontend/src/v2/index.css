@@ -1,45 +1,282 @@
 @import "../index.css";
+@import "hpe-design-tokens/dist/css/primitives.css";
+@import "hpe-design-tokens/dist/css/global.css";
+@import "hpe-design-tokens/dist/css/dimension.css";
+@import "hpe-design-tokens/dist/css/dimension.small.css";
+@import "hpe-design-tokens/dist/css/components.css";
+@import "hpe-design-tokens/dist/css/color.light.css";
+@import "hpe-design-tokens/dist/css/color.dark.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
-    --radius: 0.5rem;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 12%;
-    --accent: 0 0% 94%;
-    --accent-foreground: 0 0% 12%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --input: 0 0% 84%;
-    --ring: 159 100% 35%;
+    color-scheme: light;
+
+    --radius: var(--hpe-radius-small);
+
+    --background: var(--hpe-color-background-back);
+    --foreground: var(--hpe-color-text-default);
+    --card: var(--hpe-color-background-front);
+    --card-foreground: var(--hpe-color-text-default);
+    --popover: var(--hpe-color-background-floating);
+    --popover-foreground: var(--hpe-color-text-default);
+    --primary: var(--hpe-color-background-primary-strong);
+    --primary-foreground: var(--hpe-color-text-onPrimaryStrong);
+    --secondary: var(--hpe-color-background-contrast);
+    --secondary-foreground: var(--hpe-color-text-strong);
+    --muted: var(--hpe-color-background-contrast);
+    --muted-foreground: var(--hpe-color-text-weak);
+    --accent: var(--hpe-color-background-hover);
+    --accent-foreground: var(--hpe-color-text-strong);
+    --destructive: var(--hpe-color-foreground-critical);
+    --destructive-foreground: var(--hpe-color-text-onStrong);
+    --border: var(--hpe-color-border-weak);
+    --input: var(--hpe-formField-default-input-container-rest-borderColor);
+    --ring: var(--hpe-color-focus);
+
+    --primary-hover: var(--hpe-color-background-primary-strong-hover);
+    --primary-active: var(--hpe-color-background-primary-xstrong);
+    --primary-border: var(--hpe-button-primary-rest-borderColor);
+    --primary-hover-border: var(--hpe-button-primary-hover-borderColor);
+    --primary-hover-foreground: var(--hpe-color-text-onPrimaryStrong);
+    --secondary-hover: var(--hpe-button-secondary-hover-background);
+    --secondary-border: var(--hpe-button-secondary-rest-borderColor);
+    --secondary-hover-border: var(--hpe-button-secondary-hover-borderColor);
+    --input-hover: var(--hpe-formField-default-input-container-hover-borderColor);
+    --focus-ring-support: var(--hpe-color-focus-support);
+
+    --motion-duration-fast: 100ms;
+    --motion-duration-default: 150ms;
+    --motion-duration-slow: 220ms;
+    --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
   }
 
-  .dark {
-    --popover: 0 0% 12%;
-    --popover-foreground: 0 0% 98%;
-    --secondary: 0 0% 16%;
-    --secondary-foreground: 0 0% 96%;
-    --accent: 0 0% 20%;
-    --accent-foreground: 0 0% 96%;
-    --destructive: 0 63% 48%;
-    --destructive-foreground: 0 0% 100%;
-    --input: 0 0% 24%;
-    --ring: 159 100% 45%;
+  :root.dark,
+  :root[data-mode="dark"] {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
   }
 }
 
-@theme {
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+@theme inline {
+  --font-sans: var(--hpe-fontStack-primary);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-hover: var(--input-hover);
+  --color-ring: var(--ring);
+  --color-focus-ring-support: var(--focus-ring-support);
+
+  --color-hpe-brand: var(--hpe-color-decorative-brand);
+  --color-hpe-accent-cyan: var(--hpe-color-decorative-cyan);
+  --color-hpe-accent-purple: var(--hpe-color-decorative-purple);
+  --color-hpe-status-ok: var(--hpe-color-foreground-ok);
+  --color-hpe-status-warning: var(--hpe-color-foreground-warning);
+  --color-hpe-status-critical: var(--hpe-color-foreground-critical);
+
+  --radius-sm: var(--hpe-radius-xsmall);
+  --radius-md: var(--hpe-radius-small);
+  --radius-lg: var(--hpe-radius-medium);
+  --radius-xl: var(--hpe-radius-large);
+}
+
+@layer components {
+  [data-slot="button"],
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"] {
+    transition-duration: var(--motion-duration-default);
+    transition-timing-function: var(--motion-easing-standard);
+  }
+
+  [data-slot="button"] {
+    border-width: var(--hpe-static-borderWidth-default);
+    font-weight: var(--hpe-button-default-rest-fontWeight);
+  }
+
+  [data-slot="button"]:focus-visible,
+  [data-slot="input"]:focus-visible,
+  [data-slot="textarea"]:focus-visible,
+  [data-slot="select-trigger"]:focus-visible {
+    box-shadow: var(--hpe-focusIndicator-boxShadow);
+    outline: var(--hpe-focusIndicator-outline);
+    outline-offset: var(--hpe-focusIndicator-outlineOffset);
+  }
+
+  [data-slot="button"][data-size="default"] {
+    min-height: var(--hpe-element-medium-minHeight);
+    padding: var(--hpe-button-default-medium-paddingY) var(--hpe-button-default-medium-paddingX);
+  }
+
+  [data-slot="button"][data-size="sm"] {
+    min-height: var(--hpe-element-small-minHeight);
+    padding: var(--hpe-button-default-small-paddingY) var(--hpe-element-small-paddingX-wide);
+  }
+
+  [data-slot="button"][data-size="xs"] {
+    min-height: var(--hpe-element-xsmall-minHeight);
+    padding: var(--hpe-button-default-xsmall-paddingY) var(--hpe-button-default-xsmall-paddingX);
+  }
+
+  [data-slot="button"][data-size^="icon"] {
+    padding: var(--hpe-button-default-medium-iconOnly-paddingY);
+  }
+
+  [data-slot="button"][data-size="icon-xs"] {
+    padding: var(--hpe-button-default-xsmall-iconOnly-paddingY);
+  }
+
+  [data-slot="button"][data-size="icon-sm"] {
+    padding: var(--hpe-button-default-small-iconOnly-paddingY);
+  }
+
+  [data-slot="button"][data-size="icon-lg"] {
+    padding: var(--hpe-button-default-large-iconOnly-paddingY);
+  }
+
+  [data-slot="button"][data-variant="default"] {
+    background: var(--primary);
+    border-color: var(--primary-border);
+    border-radius: var(--hpe-button-primary-medium-borderRadius);
+    color: var(--primary-foreground);
+  }
+
+  [data-slot="button"][data-variant="default"]:not(:disabled):hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover-border);
+    color: var(--primary-hover-foreground);
+  }
+
+  [data-slot="button"][data-variant="default"]:not(:disabled):active,
+  [data-slot="button"][data-variant="default"][data-state="open"] {
+    background: var(--primary-active);
+    color: var(--primary-hover-foreground);
+  }
+
+  [data-slot="button"][data-variant="default"]:disabled {
+    background: var(--hpe-button-primary-disabled-rest-background);
+    color: var(--hpe-button-primary-disabled-rest-textColor);
+  }
+
+  [data-slot="button"][data-variant="secondary"],
+  [data-slot="button"][data-variant="outline"] {
+    background: var(--hpe-button-secondary-rest-background);
+    border-color: var(--secondary-border);
+    border-radius: var(--hpe-button-secondary-medium-borderRadius);
+    color: var(--hpe-button-secondary-rest-textColor);
+  }
+
+  [data-slot="button"][data-variant="secondary"]:not(:disabled):hover,
+  [data-slot="button"][data-variant="outline"]:not(:disabled):hover {
+    background: var(--secondary-hover);
+    border-color: var(--secondary-hover-border);
+    color: var(--hpe-button-secondary-hover-textColor);
+  }
+
+  [data-slot="button"][data-variant="ghost"] {
+    background: var(--hpe-button-default-rest-background);
+    border-color: var(--hpe-button-default-rest-borderColor);
+    color: var(--hpe-button-default-rest-textColor);
+  }
+
+  [data-slot="button"][data-variant="ghost"]:not(:disabled):hover {
+    background: var(--hpe-button-default-hover-background);
+    border-color: var(--hpe-button-default-hover-borderColor);
+    color: var(--hpe-button-default-hover-textColor);
+  }
+
+  [data-slot="button"][data-variant="link"] {
+    color: var(--hpe-color-text-primary);
+  }
+
+  [data-slot="button"][data-variant="link"]:not(:disabled):hover {
+    color: var(--hpe-color-text-primary-hover);
+  }
+
+  [data-slot="button"][data-variant="destructive"] {
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+  }
+
+  [data-slot="button"][data-variant="destructive"]:not(:disabled):hover {
+    background: var(--hpe-color-border-critical);
+  }
+
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="select-trigger"] {
+    background: var(--hpe-formField-default-input-container-rest-background);
+    border-color: var(--input);
+    border-radius: var(--hpe-formField-default-medium-input-container-borderRadius);
+    border-width: var(--hpe-formField-default-medium-input-container-borderWidth);
+    color: var(--hpe-formField-default-value-rest-textColor);
+    font-size: var(--hpe-formField-default-medium-value-fontSize);
+    line-height: var(--hpe-formField-default-medium-value-lineHeight);
+  }
+
+  [data-slot="input"],
+  [data-slot="select-trigger"] {
+    min-height: var(--hpe-element-medium-minHeight);
+    padding: var(--hpe-formField-default-medium-input-container-paddingY)
+      var(--hpe-formField-default-medium-input-container-paddingX);
+  }
+
+  [data-slot="textarea"] {
+    padding: var(--hpe-formField-default-medium-input-container-paddingY)
+      var(--hpe-formField-default-medium-input-container-paddingX);
+  }
+
+  [data-slot="input"]::placeholder,
+  [data-slot="textarea"]::placeholder {
+    color: var(--hpe-formField-default-placeholder-rest-textColor);
+  }
+
+  [data-slot="input"]:not(:disabled):hover,
+  [data-slot="textarea"]:not(:disabled):hover,
+  [data-slot="select-trigger"]:not(:disabled):hover {
+    background: var(--hpe-formField-default-input-container-hover-background);
+    border-color: var(--input-hover);
+    color: var(--hpe-formField-default-value-hover-textColor);
+  }
+
+  [data-slot="input"][aria-invalid="true"],
+  [data-slot="textarea"][aria-invalid="true"],
+  [data-slot="select-trigger"][aria-invalid="true"] {
+    background: var(--hpe-formField-default-input-container-error-rest-background);
+    border-color: var(--hpe-formField-default-input-container-error-rest-borderColor);
+    color: var(--hpe-formField-default-value-error-rest-textColor);
+  }
+
+  [data-slot="input"]:disabled,
+  [data-slot="textarea"]:disabled,
+  [data-slot="select-trigger"]:disabled {
+    background: var(--hpe-formField-default-input-container-disabled-rest-background);
+    border-color: var(--hpe-formField-default-input-container-disabled-rest-borderColor);
+    color: var(--hpe-formField-default-value-disabled-rest-textColor);
+  }
 }

@@ -16,6 +16,7 @@ describe("ThemeProvider", () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.classList.remove("dark");
+    document.documentElement.removeAttribute("data-mode");
   });
 
   it("defaults to dark theme", () => {
@@ -26,6 +27,7 @@ describe("ThemeProvider", () => {
     );
     expect(screen.getByTestId("theme")).toHaveTextContent("dark");
     expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-mode", "dark");
   });
 
   it("toggles to light and removes class", () => {
@@ -39,6 +41,7 @@ describe("ThemeProvider", () => {
     });
     expect(screen.getByTestId("theme")).toHaveTextContent("light");
     expect(document.documentElement).not.toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-mode", "light");
     expect(localStorage.getItem("bigweld-theme")).toBe("light");
   });
 });

@@ -24,6 +24,7 @@
     "clsx": "^2.1.1",
     "dompurify": "^3.4.1",
     "embla-carousel-react": "^8.6.0",
+    "hpe-design-tokens": "^2.2.3",
     "lucide-react": "^1.11.0",
     "mermaid": "^11.14.0",
     "motion": "^12.38.0",
