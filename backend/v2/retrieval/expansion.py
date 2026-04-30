@@ -30,7 +30,8 @@ async def expand_neighbors(
 
     expanded: list[dict[str, Any]] = []
     for seed in seeds:
-        response = await mcp_client.call_tool(
+        # direct_call_tool — see entity_search.py note.
+        response = await mcp_client.direct_call_tool(
             "get_neighbors",
             {
                 "slug": seed["slug"],

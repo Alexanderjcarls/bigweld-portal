@@ -32,7 +32,9 @@ async def chat(request: ChatRequest):
     await get_or_create_conversation(pg_pool, request.conv_id)
 
     history_rows = await load_active_history(pg_pool, request.conv_id)
-    message_history = model_messages_from_raw([row["raw_message"] for row in history_rows])
+    message_history_list = model_messages_from_raw([row["raw_message"] for row in history_rows])
+    # Pydantic AI's VercelAIAdapter expects None for empty history, not [].
+    message_history = message_history_list if message_history_list else None
     last_assistant = next(
         (row for row in reversed(history_rows) if row["role"] == "assistant"),
         None,

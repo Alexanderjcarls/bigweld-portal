@@ -60,7 +60,10 @@ async def _nearest_for_label(
     if query_text is not None:
         payload = {"label": label, "query_text": query_text, "k": top_k}
 
-    response = await mcp_client.call_tool("nearest_nodes", payload)
+    # Use direct_call_tool for external (non-agent-managed) MCP calls;
+    # call_tool requires RunContext + ToolsetTool wiring that's only available
+    # inside an Agent run loop.
+    response = await mcp_client.direct_call_tool("nearest_nodes", payload)
     results = _extract_payload(response, preferred_key="results")
     normalized: list[dict[str, Any]] = []
     for item in results:

@@ -26,11 +26,16 @@ async def run_pre_retrieval(
     query = user_msg if not last_assistant_msg else f"{last_assistant_msg}\n\n{user_msg}"
     embedding = await embed_query(query)
 
-    entities = await nearest_entities(mcp_client, embedding, query_text=query)
-    if not entities:
-        summaries = await nearest_summaries(pg_pool, embedding)
-        return render_retrieved_context([], [], summaries)
+    # MCP server must be entered as an async context manager before
+    # direct_call_tool can be invoked. The deps.mcp_client is a fresh instance
+    # per turn (separate from the agent's toolset), so we manage its lifecycle
+    # here.
+    async with mcp_client:
+        entities = await nearest_entities(mcp_client, embedding, query_text=query)
+        if not entities:
+            summaries = await nearest_summaries(pg_pool, embedding)
+            return render_retrieved_context([], [], summaries)
 
-    expansion = await expand_neighbors(mcp_client, entities)
+        expansion = await expand_neighbors(mcp_client, entities)
     summaries = await nearest_summaries(pg_pool, embedding)
     return render_retrieved_context(entities, expansion, summaries)

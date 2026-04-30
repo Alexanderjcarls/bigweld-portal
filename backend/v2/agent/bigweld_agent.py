@@ -47,38 +47,48 @@ PERSONA_TEXT = load_persona_text()
 
 
 def build_agent() -> Agent[BigweldDeps]:
-    nas_provider = OpenAIProvider(
-        base_url=settings.NAS_VLLM_URL,
-        api_key="not-used",
-    )
-    nas_model = OpenAIChatModel(settings.MODEL_NAME, provider=nas_provider)
-
     deepinfra_provider = OpenAIProvider(
         base_url=settings.DEEPINFRA_BASE_URL,
         api_key=settings.DEEPINFRA_API_KEY,
     )
     deepinfra_model = OpenAIChatModel(settings.MODEL_NAME, provider=deepinfra_provider)
 
-    fallback = FallbackModel(nas_model, deepinfra_model)
+    nas_url = (settings.NAS_VLLM_URL or "").strip().lower()
+    if nas_url and nas_url not in ("none", "skip", "disabled"):
+        nas_provider = OpenAIProvider(
+            base_url=settings.NAS_VLLM_URL,
+            api_key="not-used",
+        )
+        nas_model = OpenAIChatModel(settings.MODEL_NAME, provider=nas_provider)
+        model = FallbackModel(nas_model, deepinfra_model)
+    else:
+        # Cloud-first: NAS vLLM not deployed yet; DeepInfra primary, no fallback.
+        # Phase 11b will swap NAS_VLLM_URL to point at the real NAS endpoint
+        # once vLLM 0.11.0 + Qwen3.6-35B-A3B is provisioned there.
+        model = deepinfra_model
+
     mcp_server = MCPServerStreamableHTTP(settings.MCP_URL)
 
     agent = Agent(
-        model=fallback,
+        model=model,
         toolsets=[mcp_server],
         deps_type=BigweldDeps,
     )
 
     @agent.system_prompt(dynamic=True)
-    async def base_persona(ctx: RunContext[BigweldDeps]) -> str:
-        return ctx.deps.persona_text or PERSONA_TEXT
-
-    @agent.system_prompt(dynamic=True)
-    async def retrieved_context(ctx: RunContext[BigweldDeps]) -> str:
-        return await run_pre_retrieval(
+    async def persona_with_retrieved_context(ctx: RunContext[BigweldDeps]) -> str:
+        # Merged into a single system_prompt because DeepInfra's Qwen endpoint
+        # rejects multiple system messages with "System message must be at the
+        # beginning." (verified 2026-04-30 against Qwen/Qwen3.6-35B-A3B).
+        persona = ctx.deps.persona_text or PERSONA_TEXT
+        retrieved = await run_pre_retrieval(
             ctx.deps.user_msg,
             ctx.deps.last_assistant_msg,
             ctx.deps.mcp_client,
             ctx.deps.pg_pool,
         )
+        if retrieved:
+            return f"{persona}\n\n{retrieved}"
+        return persona
 
     return agent

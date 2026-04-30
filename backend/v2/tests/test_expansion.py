@@ -8,7 +8,7 @@ from backend.v2.retrieval.expansion import STRUCTURAL_EDGES, expand_neighbors
 @pytest.mark.asyncio
 async def test_expand_neighbors_uses_structural_allowlist():
     mcp_client = AsyncMock()
-    mcp_client.call_tool.return_value = {
+    mcp_client.direct_call_tool.return_value = {
         "neighbors": [
             {
                 "slug": "func-x",
@@ -24,7 +24,7 @@ async def test_expand_neighbors_uses_structural_allowlist():
     result = await expand_neighbors(mcp_client, seeds, hop_limit=1, neighbor_cap=5)
 
     assert len(result) == 1
-    call_args = mcp_client.call_tool.call_args
+    call_args = mcp_client.direct_call_tool.call_args
     assert call_args.args[0] == "get_neighbors"
     assert set(call_args.args[1]["edge_types"]) == set(STRUCTURAL_EDGES)
 
@@ -49,7 +49,7 @@ def test_structural_edges_includes_all_5():
 @pytest.mark.asyncio
 async def test_expand_neighbors_normalizes_current_mcp_shape_and_sorts_per_edge():
     mcp_client = AsyncMock()
-    mcp_client.call_tool.return_value = [
+    mcp_client.direct_call_tool.return_value = [
         {
             "neighbor": {
                 "slug": "func-old",
