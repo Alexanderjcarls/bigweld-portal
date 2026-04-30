@@ -77,9 +77,36 @@ function writeConversationId(conversationId: string): void {
 }
 
 function createConversationId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
+  // crypto.randomUUID() is only available in secure contexts (HTTPS or
+  // localhost). Over plain HTTP from a remote IP (e.g. LAN access to
+  // staging at http://192.168.0.30:8886) it's undefined, so we fall through
+  // to a manual UUIDv4 builder that uses crypto.getRandomValues (which
+  // works regardless of secure-context status).
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      /* fall through to manual UUIDv4 */
+    }
   }
 
-  return `v2-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return manualUuidV4();
+}
+
+function manualUuidV4(): string {
+  // RFC 4122 §4.4 UUIDv4. Backend (bigweld_v2.conversations.id) is a UUID
+  // PRIMARY KEY column; the previous fallback ("v2-{timestamp}-{rand}") was
+  // rejected by Pydantic's UUID validator on the /chat endpoint.
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
