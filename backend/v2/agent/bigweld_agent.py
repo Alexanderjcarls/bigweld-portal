@@ -56,6 +56,9 @@ def _build_options(deps: BigweldDeps, retrieved_context: str | None) -> ClaudeAg
         },
         env={"ENABLE_TOOL_SEARCH": "true"},
         include_partial_messages=True,  # emit raw Anthropic SSE event dicts as StreamEvent
+        tools=[],  # disable Bash/Read/Write/etc. — agent is graph-only via MCP
+        setting_sources=[],  # don't inherit ~/.claude/settings.json (matrix_admin's interactive CC config)
+        permission_mode="bypassPermissions",  # no gate; conversational confirmation is the gate
     )
 
 

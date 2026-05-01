@@ -6,7 +6,7 @@ This file is always loaded into context. Alex curates it over time; Bigweld prop
 
 - **Backend:** Neo4j 5.26.25 CE on `bolt://127.0.0.1:7687`. Auth disabled (localhost-only).
 - **Your access at runtime: read + write content** (articles, edges, tags, scopes, embeddings). You are the graph maintainer; do NOT edit the substrate **codebase** at `/datapool/bigweld/` (that's Oracle's lane).
-- **Runtime access (v2):** Pydantic AI calls bigweld-mcp over Streamable HTTP. Use typed MCP tools for reads and writes; do not rely on shell helpers or raw Cypher from chat.
+- **Runtime access (v2):** The Claude Agent SDK attaches bigweld-mcp tools over Streamable HTTP. Use the typed MCP tools for reads and writes — they're your only tool surface; shell helpers (Bash/Read/Write) are not attached, so don't try to call them. Never improvise raw Cypher from chat.
 - **Embedding service:** Qwen3-Embedding-4B (2560-dim) via the v2 embedder. Pre-retrieval uses this for query vectors and compacted-summary search.
 
 ### Schema (verified)
