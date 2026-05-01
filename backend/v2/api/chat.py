@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import asyncpg
@@ -66,11 +67,14 @@ async def chat(request: Request, pool: asyncpg.Pool = Depends(get_pool)):
             user_text[:80] if user_text else "untitled",
         )
 
-        turn_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM bigweld_v2.messages WHERE conversation_id = $1",
+        turn_idx = await conn.fetchval(
+            """
+            SELECT COALESCE(MAX(turn_idx) + 1, 0)
+            FROM bigweld_v2.messages
+            WHERE conversation_id = $1
+            """,
             conversation_id,
         )
-        turn_idx = turn_count
 
         await persist_anthropic_message(
             conn,
@@ -85,38 +89,29 @@ async def chat(request: Request, pool: asyncpg.Pool = Depends(get_pool)):
 
     deps = BigweldDeps(conversation_id=str(conversation_id), pg_pool=pool)
     translator = AnthropicToVercelTranslator(step_idx=turn_idx)
-
-    assistant_blocks: list[dict | None] = []
-    final_usage: dict | None = None
-    final_finish: str | None = None
+    accumulator = _AnthropicMessageAccumulator()
 
     async def event_stream() -> AsyncIterator[dict]:
-        nonlocal assistant_blocks, final_usage, final_finish
         async for ev in stream_agent_response(deps, user_text, prior_history):
-            _accumulate_into_blocks(ev, assistant_blocks, translator)
+            _accumulate_into_blocks(ev, accumulator)
             yield ev
-            if ev.get("type") == "message_delta":
-                if ev.get("usage"):
-                    final_usage = ev["usage"]
-                if ev.get("delta", {}).get("stop_reason"):
-                    final_finish = ev["delta"]["stop_reason"]
 
     async def sse_stream() -> AsyncIterator[bytes]:
         async for chunk in stream_to_sse(event_stream(), translator):
             yield chunk
 
         async with pool.acquire() as conn:
-            await persist_anthropic_message(
-                conn,
-                conversation_id,
-                "assistant",
-                [block for block in assistant_blocks if block is not None],
-                turn_idx=turn_idx + 1,
-                token_count=(final_usage or {}).get("output_tokens", 0)
-                + (final_usage or {}).get("input_tokens", 0),
-                finish_reason=final_finish,
-                usage=final_usage,
-            )
+            for offset, message in enumerate(accumulator.completed_messages, start=1):
+                await persist_anthropic_message(
+                    conn,
+                    conversation_id,
+                    message.role,
+                    message.content,
+                    turn_idx=turn_idx + offset,
+                    token_count=message.token_count,
+                    finish_reason=message.finish_reason,
+                    usage=message.usage,
+                )
 
     return StreamingResponse(
         sse_stream(),
@@ -139,32 +134,70 @@ def _flatten_text_parts(parts) -> str:
     return "".join(out)
 
 
-def _accumulate_into_blocks(
-    event: dict,
-    blocks: list[dict | None],
-    translator: AnthropicToVercelTranslator,
-):
-    """Mirror Anthropic events into content blocks for persistence."""
-    _ = translator
-    et = event.get("type")
-    if et == "content_block_start":
+@dataclass
+class _PersistableMessage:
+    role: str
+    content: list[dict]
+    token_count: int = 0
+    finish_reason: str | None = None
+    usage: dict | None = None
+
+
+@dataclass
+class _AnthropicMessageAccumulator:
+    """Mirror raw Anthropic stream events into replayable message rows."""
+
+    current_role: str | None = None
+    blocks: list[dict | None] = field(default_factory=list)
+    usage: dict | None = None
+    finish_reason: str | None = None
+    completed_messages: list[_PersistableMessage] = field(default_factory=list)
+
+    def handle(self, event: dict) -> None:
+        et = event.get("type")
+        if et == "message_start":
+            self._start_message(event)
+        elif et == "content_block_start":
+            self._start_block(event)
+        elif et == "content_block_delta":
+            self._apply_delta(event)
+        elif et == "content_block_stop":
+            self._stop_block(event)
+        elif et == "message_delta":
+            self._apply_message_delta(event)
+        elif et == "message_stop":
+            self._stop_message()
+
+    def _start_message(self, event: dict) -> None:
+        self.current_role = event.get("message", {}).get("role") or "assistant"
+        self.blocks = []
+        self.usage = None
+        self.finish_reason = None
+
+    def _start_block(self, event: dict) -> None:
+        if self.current_role not in {"assistant", "user"}:
+            return
         idx = event["index"]
         cb = event["content_block"]
-        while len(blocks) <= idx:
-            blocks.append(None)
-        blocks[idx] = dict(cb)
+        while len(self.blocks) <= idx:
+            self.blocks.append(None)
+        self.blocks[idx] = dict(cb)
+        block = self.blocks[idx]
         if cb.get("type") == "text":
-            blocks[idx]["text"] = ""
+            block["text"] = cb.get("text", "")
         elif cb.get("type") == "thinking":
-            blocks[idx]["thinking"] = ""
+            block["thinking"] = cb.get("thinking", "")
         elif cb.get("type") == "tool_use":
-            blocks[idx]["_partial_input"] = ""
-    elif et == "content_block_delta":
+            block["_partial_input"] = ""
+        elif cb.get("type") == "tool_result":
+            block["content"] = cb.get("content", [])
+
+    def _apply_delta(self, event: dict) -> None:
         idx = event["index"]
         delta = event["delta"]
-        if idx >= len(blocks) or blocks[idx] is None:
+        if idx >= len(self.blocks) or self.blocks[idx] is None:
             return
-        block = blocks[idx]
+        block = self.blocks[idx]
         dt = delta.get("type")
         if dt == "text_delta":
             block["text"] = (block.get("text") or "") + delta["text"]
@@ -174,14 +207,62 @@ def _accumulate_into_blocks(
             block["_partial_input"] = (block.get("_partial_input") or "") + delta["partial_json"]
         elif dt == "signature_delta":
             block["signature"] = delta["signature"]
-    elif et == "content_block_stop":
+
+    def _stop_block(self, event: dict) -> None:
         idx = event["index"]
-        if idx >= len(blocks) or blocks[idx] is None:
+        if idx >= len(self.blocks) or self.blocks[idx] is None:
             return
-        block = blocks[idx]
+        block = self.blocks[idx]
         if block.get("type") == "tool_use" and "_partial_input" in block:
             try:
                 block["input"] = json.loads(block["_partial_input"]) if block["_partial_input"] else {}
             except json.JSONDecodeError:
                 block["input"] = {}
             del block["_partial_input"]
+
+    def _apply_message_delta(self, event: dict) -> None:
+        if event.get("usage"):
+            self.usage = event["usage"]
+        stop_reason = event.get("delta", {}).get("stop_reason")
+        if stop_reason:
+            self.finish_reason = stop_reason
+
+    def _stop_message(self) -> None:
+        if self.current_role not in {"assistant", "user"}:
+            return
+        content = [block for block in self.blocks if block is not None]
+        if not content:
+            self._clear_current()
+            return
+
+        usage = None
+        finish_reason = None
+        token_count = 0
+        if self.current_role == "assistant" and self.finish_reason != "tool_use":
+            usage = self.usage
+            finish_reason = self.finish_reason
+            token_count = (usage or {}).get("output_tokens", 0) + (usage or {}).get(
+                "input_tokens",
+                0,
+            )
+
+        self.completed_messages.append(
+            _PersistableMessage(
+                role=self.current_role,
+                content=content,
+                token_count=token_count,
+                finish_reason=finish_reason,
+                usage=usage,
+            )
+        )
+        self._clear_current()
+
+    def _clear_current(self) -> None:
+        self.current_role = None
+        self.blocks = []
+        self.usage = None
+        self.finish_reason = None
+
+
+def _accumulate_into_blocks(event: dict, accumulator: _AnthropicMessageAccumulator):
+    accumulator.handle(event)

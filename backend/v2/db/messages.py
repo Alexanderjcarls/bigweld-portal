@@ -50,6 +50,9 @@ async def load_anthropic_messages(
 ) -> list[dict[str, Any]]:
     """
     Load conversation history as a list of Anthropic message dicts ordered by turn_idx.
+    Legacy rows may contain assistant tool_use blocks without the required next
+    user tool_result row. Strip those orphan tool_use blocks on load so old
+    conversations remain replayable after the multi-step persistence fix.
     Returns [] if no history.
     """
     rows = await conn.fetch(
@@ -60,7 +63,7 @@ async def load_anthropic_messages(
         """,
         conversation_id,
     )
-    return [_decode_jsonb(r["raw_message"]) for r in rows]
+    return _strip_orphan_tool_uses([_decode_jsonb(r["raw_message"]) for r in rows])
 
 
 async def total_token_count(
@@ -225,6 +228,63 @@ def _normalise_content(content: Any) -> list[dict[str, Any]]:
     if isinstance(content, dict):
         return [dict(content)]
     return [{"type": "text", "text": str(content)}]
+
+
+def _strip_orphan_tool_uses(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sanitized: list[dict[str, Any]] = []
+    for idx, message in enumerate(history):
+        if message.get("role") != "assistant":
+            sanitized.append(message)
+            continue
+
+        content = message.get("content")
+        if not isinstance(content, list):
+            sanitized.append(message)
+            continue
+
+        tool_use_ids = {
+            block.get("id")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id")
+        }
+        if not tool_use_ids:
+            sanitized.append(message)
+            continue
+
+        next_result_ids = _tool_result_ids(history[idx + 1]) if idx + 1 < len(history) else set()
+        if tool_use_ids.issubset(next_result_ids):
+            sanitized.append(message)
+            continue
+
+        keep_result_ids = tool_use_ids & next_result_ids
+        stripped_content = [
+            dict(block)
+            for block in content
+            if not (
+                isinstance(block, dict)
+                and block.get("type") == "tool_use"
+                and block.get("id") not in keep_result_ids
+            )
+        ]
+        if stripped_content:
+            sanitized.append({**message, "content": stripped_content})
+
+    return sanitized
+
+
+def _tool_result_ids(message: dict[str, Any]) -> set[str]:
+    if message.get("role") != "user":
+        return set()
+    content = message.get("content")
+    if not isinstance(content, list):
+        return set()
+    return {
+        block["tool_use_id"]
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") == "tool_result"
+        and isinstance(block.get("tool_use_id"), str)
+    }
 
 
 def _message_text(raw_message: dict[str, Any]) -> str:

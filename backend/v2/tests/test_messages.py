@@ -21,6 +21,13 @@ async def test_persist_and_load_round_trip(pg_conn):
         {"type": "text", "text": "Hi there"},
         {"type": "tool_use", "id": "toolu_1", "name": "get_node", "input": {"slug": "x"}},
     ]
+    tool_result_content = [
+        {
+            "type": "tool_result",
+            "tool_use_id": "toolu_1",
+            "content": [{"type": "text", "text": "node x"}],
+        }
+    ]
 
     await persist_anthropic_message(
         pg_conn,
@@ -38,11 +45,58 @@ async def test_persist_and_load_round_trip(pg_conn):
         turn_idx=1,
         token_count=150,
     )
+    await persist_anthropic_message(
+        pg_conn,
+        conv_id,
+        "user",
+        tool_result_content,
+        turn_idx=2,
+    )
 
     history = await load_anthropic_messages(pg_conn, conv_id)
-    assert len(history) == 2
+    assert len(history) == 3
     assert history[0] == {"role": "user", "content": user_content}
     assert history[1] == {"role": "assistant", "content": assistant_content}
+    assert history[2] == {"role": "user", "content": tool_result_content}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_load_strips_legacy_orphan_tool_use_blocks(pg_conn):
+    conv_id = uuid4()
+    await pg_conn.execute(
+        "INSERT INTO bigweld_v2.conversations (id, title) VALUES ($1, 'test')", conv_id
+    )
+    await persist_anthropic_message(
+        pg_conn,
+        conv_id,
+        "user",
+        [{"type": "text", "text": "check this"}],
+        turn_idx=0,
+    )
+    await persist_anthropic_message(
+        pg_conn,
+        conv_id,
+        "assistant",
+        [
+            {"type": "text", "text": "I will look."},
+            {"type": "tool_use", "id": "toolu_orphan", "name": "get_node", "input": {}},
+        ],
+        turn_idx=1,
+    )
+    await persist_anthropic_message(
+        pg_conn,
+        conv_id,
+        "user",
+        [{"type": "text", "text": "next normal turn"}],
+        turn_idx=2,
+    )
+
+    history = await load_anthropic_messages(pg_conn, conv_id)
+    assert history == [
+        {"role": "user", "content": [{"type": "text", "text": "check this"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "I will look."}]},
+        {"role": "user", "content": [{"type": "text", "text": "next normal turn"}]},
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")

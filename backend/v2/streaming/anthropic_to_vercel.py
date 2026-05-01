@@ -15,7 +15,7 @@ VERCEL_HEADER = ("x-vercel-ai-ui-message-stream", "v1")
 
 @dataclass
 class _BlockState:
-    block_type: str  # "text" | "tool_use" | "thinking"
+    block_type: str  # "text" | "tool_use" | "thinking" | "tool_result"
     block_id: str  # deterministic part id e.g. f"{step}-{block_idx}"
     tool_call_id: str | None = None
     tool_name: str | None = None
@@ -28,7 +28,9 @@ class AnthropicToVercelTranslator:
     blocks: dict[int, _BlockState] = field(default_factory=dict)
     last_usage: dict | None = None
     last_stop_reason: str | None = None
-    persisted_signatures: dict[int, str] = field(default_factory=dict)
+    persisted_signatures: dict[str, str] = field(default_factory=dict)
+    started: bool = False
+    current_role: str | None = None
 
     def translate(self, event: dict) -> list[dict]:
         """Returns zero or more Vercel parts for a single Anthropic event."""
@@ -36,16 +38,46 @@ class AnthropicToVercelTranslator:
 
         if et == "message_start":
             msg_id = event.get("message", {}).get("id", "msg_unknown")
-            return [
-                {"type": "start", "messageId": msg_id},
-                {"type": "start-step"},
-            ]
+            self.current_role = event.get("message", {}).get("role") or "assistant"
+            self.blocks.clear()
+            if self.current_role == "user":
+                return []
+            if self.current_role != "assistant":
+                return []
+
+            self.last_usage = None
+            self.last_stop_reason = None
+            if not self.started:
+                self.started = True
+                return [
+                    {"type": "start", "messageId": msg_id},
+                    {"type": "start-step"},
+                ]
+
+            self.step_idx += 1
+            return [{"type": "start-step"}]
 
         if et == "content_block_start":
             idx = event["index"]
             cb = event["content_block"]
             block_id = f"{self.step_idx}-{idx}"
             cb_type = cb.get("type")
+            if cb_type == "tool_result":
+                tool_call_id = cb.get("tool_use_id")
+                self.blocks[idx] = _BlockState(
+                    block_type="tool_result",
+                    block_id=block_id,
+                    tool_call_id=tool_call_id,
+                )
+                if not tool_call_id:
+                    return []
+                return [
+                    {
+                        "type": "tool-output-available",
+                        "toolCallId": tool_call_id,
+                        "output": cb.get("content"),
+                    }
+                ]
             if cb_type == "text":
                 self.blocks[idx] = _BlockState(block_type="text", block_id=block_id)
                 return [{"type": "text-start", "id": block_id}]
@@ -102,7 +134,7 @@ class AnthropicToVercelTranslator:
                 ]
             if dt == "signature_delta":
                 # Persist server-side; do not forward to Vercel.
-                self.persisted_signatures[idx] = delta["signature"]
+                self.persisted_signatures[block.block_id] = delta["signature"]
                 return []
             return []
 
@@ -146,10 +178,19 @@ class AnthropicToVercelTranslator:
             # server-side (chat.py persists into messages.usage/finish_reason)
             # and exposed via the /api/context-stats endpoint that the context
             # bar polls separately.
-            return [
-                {"type": "finish-step"},
-                {"type": "finish"},
-            ]
+            role = self.current_role
+            self.current_role = None
+            self.blocks.clear()
+            if role == "user":
+                return []
+            if role != "assistant":
+                return []
+
+            parts = [{"type": "finish-step"}]
+            if self.last_stop_reason != "tool_use":
+                parts.append({"type": "finish"})
+                self.started = False
+            return parts
 
         if et == "ping":
             return []
