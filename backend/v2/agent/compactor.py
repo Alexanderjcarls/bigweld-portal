@@ -31,6 +31,9 @@ async def compact_conversation(messages: list[dict]) -> str:
     options = ClaudeAgentOptions(
         model=settings.MODEL,
         system_prompt=COMPACTOR_PROMPT,
+        tools=[],
+        setting_sources=[],
+        permission_mode="bypassPermissions",
     )
     transcript = "\n\n".join(_format_message(m) for m in messages)
     full = ""

@@ -26,6 +26,9 @@ async def test_compact_conversation_returns_concatenated_text_from_sdk_stream():
     assert "USER: Compact case-reopen work." in kwargs["prompt"]
     assert "ASSISTANT: Decision: immutable turns." in kwargs["prompt"]
     assert kwargs["options"].model == settings.MODEL
+    assert kwargs["options"].tools == []
+    assert kwargs["options"].setting_sources == []
+    assert kwargs["options"].permission_mode == "bypassPermissions"
 
 
 async def _async_iter(items):
