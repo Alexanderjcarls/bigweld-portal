@@ -61,7 +61,8 @@ async def chat(request: Request, pool: asyncpg.Pool = Depends(get_pool)):
             """
             INSERT INTO bigweld_v2.conversations (id, title)
             VALUES ($1, $2)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE
+            SET last_active_at = now()
             """,
             conversation_id,
             user_text[:80] if user_text else "untitled",

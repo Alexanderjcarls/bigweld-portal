@@ -28,7 +28,10 @@ async def test_chat_endpoint_streams_vercel_sse_and_persists_turns(pg_pool, monk
     async with pg_pool.acquire() as conn:
         await conn.execute("DELETE FROM bigweld_v2.conversations WHERE id = $1", conv_id)
         await conn.execute(
-            "INSERT INTO bigweld_v2.conversations (id) VALUES ($1)",
+            """
+            INSERT INTO bigweld_v2.conversations (id, last_active_at)
+            VALUES ($1, '2020-01-01T00:00:00Z')
+            """,
             conv_id,
         )
 
@@ -95,6 +98,10 @@ async def test_chat_endpoint_streams_vercel_sse_and_persists_turns(pg_pool, monk
                 """,
                 conv_id,
             )
+            last_active_at = await conn.fetchval(
+                "SELECT last_active_at FROM bigweld_v2.conversations WHERE id = $1",
+                conv_id,
+            )
 
         assert [row["role"] for row in rows] == ["user", "assistant"]
         assert _decode_raw(rows[0]["raw_message"]) == {
@@ -108,6 +115,7 @@ async def test_chat_endpoint_streams_vercel_sse_and_persists_turns(pg_pool, monk
         assert rows[1]["token_count"] == 15
         assert rows[1]["finish_reason"] == "end_turn"
         assert _decode_raw(rows[1]["usage"]) == {"input_tokens": 10, "output_tokens": 5}
+        assert last_active_at.isoformat() > "2020-01-01T00:00:00+00:00"
     finally:
         app.dependency_overrides.pop(chat_api.get_pool, None)
         async with pg_pool.acquire() as conn:
