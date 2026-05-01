@@ -35,10 +35,8 @@ describe("v2 CompactModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm compact" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:8886/api/compact");
-    expect(String(fetchMock.mock.calls[1][0])).toBe(
-      "http://localhost:8886/api/compact/confirm",
-    );
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/compact");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("/api/compact/confirm");
     expect(await screen.findByText("Compact summary persisted.")).toBeInTheDocument();
   });
 });

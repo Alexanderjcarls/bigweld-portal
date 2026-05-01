@@ -42,7 +42,7 @@ describe("v2 ChatSurface", () => {
     fireEvent.click(screen.getByLabelText("Send message"));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0][0]).toBe("http://localhost:8886/chat");
+    expect(fetchMock.mock.calls[0][0]).toBe("/chat");
 
     await act(async () => {
       controller.enqueue(

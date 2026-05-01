@@ -263,12 +263,11 @@ export async function getV2Conversation(conversationId: string): Promise<Convers
   if (!response.ok) throw new Error(`getV2Conversation: ${response.status}`);
 
   const body = await response.json();
+  const conversation = body.conversation ?? body;
   return {
-    conversation: body.conversation
-      ? normalizeConversationSummary(body.conversation)
-      : undefined,
+    conversation: conversation.id ? normalizeConversationSummary(conversation) : undefined,
     messages: Array.isArray(body.messages) ? body.messages : [],
-    active_compacted_summaries: body.active_compacted_summaries,
+    active_compacted_summaries: body.active_compacted_summaries ?? body.compacted_summaries,
   };
 }
 
